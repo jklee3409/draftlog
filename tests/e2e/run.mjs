@@ -33,6 +33,15 @@ try {
   await panel.click('[data-act="addApp"]');
   await panel.fill("#fCompany", "한결전자");
   await panel.fill("#fRole", "백엔드 개발");
+  // 마감일 달력: 열기 → 1주 뒤 빠른 선택
+  await panel.click("#fDeadlineBtn");
+  assert.ok(await panel.locator("#cal").isVisible(), "마감일 달력이 열려야 한다");
+  if (shots) await panel.screenshot({ path: path.join(here, "calendar.png") });
+  await panel.click('#cal [data-act="calQuick"][data-n="7"]');
+  const week = new Date(Date.now() + 7 * 864e5);
+  const weekYmd = `${week.getFullYear()}-${String(week.getMonth() + 1).padStart(2, "0")}-${String(week.getDate()).padStart(2, "0")}`;
+  assert.equal(await panel.inputValue("#fDeadline"), weekYmd);
+  assert.ok(await panel.locator("#cal").isHidden(), "날짜를 고르면 달력이 닫혀야 한다");
   await panel.click("#appForm button.primary");
   await panel.fill("#fQTitle", "지원 동기와 입사 후 목표를 기술해 주십시오.");
   await panel.fill("#fQLimit", "300");
@@ -84,16 +93,34 @@ try {
   assert.equal(vers[1].url, "https://chatgpt.com/c/e2e");
   assert.equal(Object.values(db.qs)[0].draft, vers[1].text, "초안도 저장한 답변으로 바뀌어야 한다");
 
-  // 6) 두 버전 비교
+  // 6) 두 버전 비교 — 두 번째를 고르면 바로 비교 창이 열린다
   await panel.click('.tabs [data-id="vers"]');
-  const boxes = panel.locator("[data-cmp]");
-  await boxes.nth(0).check();
-  await boxes.nth(1).check();
-  await panel.click('[data-act="cmpRun"]');
+  const picks = panel.locator('[data-act="cmpPick"]');
+  await picks.nth(0).click();
+  assert.ok(await panel.locator(".cmp-tray").isVisible(), "하나를 고르면 안내가 떠야 한다");
+  assert.ok(await panel.locator("#overlay").isHidden());
+  await picks.nth(1).click();
+  assert.ok(await panel.locator("#overlay").isVisible(), "두 개를 고르면 비교 창이 바로 떠야 한다");
+  assert.equal(await panel.textContent("#dlgTitle"), "v1 → v2");
   assert.ok(await panel.locator("#diffBody ins").count(), "비교 화면에 추가 표시가 있어야 한다");
   if (shots) await panel.screenshot({ path: path.join(here, "diff.png") });
 
   await panel.keyboard.press("Escape");
+  assert.equal(await panel.locator('[data-act="cmpPick"][aria-pressed="true"]').count(), 0, "비교 후 선택은 비워진다");
+
+  // 버전 답안 복사
+  await panel.bringToFront();
+  await panel.click('[data-act="verCopy"] >> nth=0');
+  await panel.waitForTimeout(300);
+  assert.match(await panel.textContent("#toast"), /v2 답안을 복사했어요|복사하지 못했어요/);
+
+  // 목록에서 D-day를 눌러 마감일 바꾸기
+  await panel.click('[data-act="toList"]');
+  await panel.click('.dday[data-act="calOpen"]');
+  await panel.click('#cal [data-act="calQuick"][data-n="0"]');
+  await panel.waitForTimeout(200);
+  assert.equal(await panel.textContent(".dday"), "D-DAY");
+  await panel.click('[data-act="selQ"]');
 
   // 7) PC 폴더 자동 저장 — 폴더 선택 창은 자동화할 수 없어서 OPFS 폴더를 대신 넘긴다
   const fileState = () => sw.evaluate(async () => (await chrome.storage.local.get("fileSync")).fileSync);

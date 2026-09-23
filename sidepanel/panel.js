@@ -19,6 +19,8 @@
     edQ: null, lastVerCount: null, importData: null,
     file: null,            // PC 폴더 자동 저장 상태 (background가 storage의 fileSync에 기록)
     nudgeOff: false,
+    cal: null,             // 열린 마감일 달력 {for: "form" | 지원서 id, value, view: 보고 있는 달의 1일}
+    formDeadline: "",      // 지원서 추가 폼의 마감일
   };
 
   /* ---------- 저장소 ---------- */
@@ -89,8 +91,8 @@
     toastT = setTimeout(() => (t.hidden = true), 3200);
   }
   async function copy(text, okMsg) {
-    try { await navigator.clipboard.writeText(text); toast(okMsg); }
-    catch { toast("복사하지 못했어요. 직접 선택해서 복사해 주세요."); }
+    try { await navigator.clipboard.writeText(text); toast(okMsg); return true; }
+    catch { toast("복사하지 못했어요. 직접 선택해서 복사해 주세요."); return false; }
   }
   function openDiff(a, b, la, lb) {
     const ops = diff(a, b), st = diffStats(a, b, ops);
@@ -156,7 +158,7 @@
     for (const a of apps) {
       const d = dday(a.deadline), qs = qsOf(a.id);
       h += `<section class="app"><div class="app-head"><div class="app-name"><strong>${esc(a.company)}</strong><span class="role">${esc(a.role || "직무 미입력")}${a.deadline ? ` · ${a.deadline.slice(5).replace("-", "/")} 마감` : ""}</span></div>
-        ${d ? `<span class="dday ${d.cls}">${d.txt}</span>` : ""}</div>`;
+        ${d ? `<button class="dday ${d.cls}" data-act="calOpen" data-for="${a.id}" title="마감일 바꾸기">${d.txt}</button>` : `<button class="btn ghost sm" data-act="calOpen" data-for="${a.id}">${icon("cal")}마감일</button>`}</div>`;
       if (qs.length) h += `<ul class="qlist">`;
       for (const q of qs) {
         const vs = versOf(q.id), c = countIn(draftOf(q), q.mode), pct = q.limit ? Math.min(100, (c / q.limit) * 100) : 0;
@@ -177,7 +179,8 @@
   const appFormHTML = () => `<form class="form" id="appForm">
       <label>회사<input id="fCompany" required maxlength="80" placeholder="예: 한결전자"></label>
       <div class="row"><label>직무<input id="fRole" maxlength="80" placeholder="예: 백엔드 개발"></label>
-      <label>마감일<input id="fDeadline" type="date"></label></div>
+      <label>마감일<input id="fDeadline" type="hidden" data-keep="no" value="${esc(S.formDeadline)}">
+        <button type="button" class="datefield ${S.formDeadline ? "" : "empty"}" data-act="calOpen" data-for="form" id="fDeadlineBtn">${icon("cal")}<span>${S.formDeadline ? dateLabel(S.formDeadline) : "날짜 선택"}</span></button></label></div>
       <div class="acts"><button type="button" class="btn ghost" data-act="cancelApp">취소</button><button class="btn primary">추가</button></div></form>`;
   const qFormHTML = (appId) => `<form class="form" id="qForm" data-app="${appId}">
       <label>문항<textarea id="fQTitle" rows="3" required maxlength="500" placeholder="문항을 그대로 붙여넣으세요"></textarea></label>
@@ -261,15 +264,18 @@
     if (!vs.length) return `<div class="empty-state"><b>아직 버전이 없어요</b><p><b>작성</b> 탭에서 버전을 저장하거나, ChatGPT·Claude 답변 위의 <b>자소서에 저장</b>을 누르면 v1부터 쌓여요.</p></div>`;
     S.cmp = S.cmp.filter((id) => S.db.vers[id] && S.db.vers[id].qid === q.id);
     const draft = draftOf(q);
-    let h = `<div class="hist-top"><span>${S.cmp.length === 2 ? "선택한 두 버전을 비교해요" : `비교할 버전 두 개를 체크하세요 <span class="num">${S.cmp.length}/2</span>`}</span>
-      <button class="btn sm ${S.cmp.length === 2 ? "primary" : ""}" data-act="cmpRun" ${S.cmp.length === 2 ? "" : "disabled"}>${S.cmp.length === 2 ? `v${vno(q.id, S.cmp[0])} ↔ v${vno(q.id, S.cmp[1])} 비교` : "비교"}</button></div><ul class="vers">`;
+    let h = S.cmp.length
+      ? `<div class="cmp-tray" role="status"><span class="cmp-n">1</span><span><b>v${vno(q.id, S.cmp[0])}</b> 선택됨 · 비교할 버전을 하나 더 고르세요</span><button class="btn ghost sm" data-act="cmpClear">취소</button></div>`
+      : `<div class="hist-top"><span>버전 두 개의 <b>비교</b>를 누르면 바로 비교 창이 열려요</span></div>`;
+    h += `<ul class="vers ${S.cmp.length ? "picking" : ""}">`;
     for (let i = vs.length - 1; i >= 0; i--) {
       const v = vs[i], prev = vs[i - 1], c = countIn(v.text, q.mode);
       const delta = prev ? c - countIn(prev.text, q.mode) : null;
       const ck = "v:" + v.id, lk = "load:" + v.id, same = v.text === draft;
       h += `<li class="ver ${v.final ? "final" : ""} ${S.cmp.includes(v.id) ? "picked" : ""}"><span class="dot"></span><div class="ver-card">
         <div class="ver-top"><span class="vno">v${i + 1}</span><span class="chip ${v.source}">${SOURCES[v.source] || v.source}</span>${v.final ? `<span class="chip final">${icon("star")}최종본</span>` : ""}${same ? '<span class="chip cur">작성 중</span>' : ""}
-          <label class="cmpbox" title="비교할 버전으로 선택"><input type="checkbox" data-cmp="${v.id}" ${S.cmp.includes(v.id) ? "checked" : ""}>비교</label></div>
+          <button class="copy-pill" data-act="verCopy" data-id="${v.id}" title="이 버전 답안을 클립보드에 복사">${icon("copy")}복사</button>
+          <button class="cmp-pick" data-act="cmpPick" data-id="${v.id}" aria-pressed="${S.cmp.includes(v.id)}" title="${S.cmp.includes(v.id) ? "선택 취소" : "비교할 버전으로 선택"}"><i>${S.cmp.includes(v.id) ? "1" : ""}</i>비교</button></div>
         <div class="ver-msg">${esc(v.message)}</div>
         <div class="ver-meta"><span>${when(v.createdAt)}</span><span>${fmt(c)}${unit(q.mode)}</span>${delta !== null ? `<span class="${delta >= 0 ? "p" : "m"}">${delta >= 0 ? "+" : "−"}${fmt(Math.abs(delta))}</span>` : ""}</div>
         ${S.openVer === v.id ? `<div class="ver-body">${esc(v.text)}</div>` : ""}
@@ -277,10 +283,11 @@
           ${same ? "" : `<button class="btn ghost sm accent" data-act="verLoad" data-id="${v.id}" title="이 버전 내용을 작성 탭으로 가져와 이어서 고쳐요. 다른 버전은 그대로 남아요.">${S.confirm === lk ? "한 번 더 누르면 덮어써요" : "이 버전으로 이어 쓰기"}</button>
           <button class="btn ghost sm" data-act="verDiff" data-id="${v.id}" title="이 버전과 작성 탭의 글을 비교해요">지금 글과 비교</button>`}
           <button class="btn ghost sm" data-act="verOpen" data-id="${v.id}">${S.openVer === v.id ? "접기" : "보기"}</button>
-          <span class="sp"></span>
+          <span class="ver-icons">
           <button class="btn ghost sm ico ${v.final ? "on" : ""}" data-act="verFinal" data-id="${v.id}" title="${v.final ? "최종본 표시 해제" : "제출할 최종본으로 표시"}" aria-label="${v.final ? "최종본 해제" : "최종본으로 표시"}" aria-pressed="${Boolean(v.final)}">${icon("star")}</button>
           ${v.url ? `<a class="btn ghost sm ico" href="${esc(v.url)}" target="_blank" rel="noopener" title="이 답변이 나온 대화 열기" aria-label="대화 열기">${icon("link")}</a>` : ""}
           <button class="btn ghost sm ico danger" data-act="verDel" data-id="${v.id}" title="버전 삭제" aria-label="버전 삭제">${S.confirm === ck ? "한 번 더 누르면 삭제" : icon("trash")}</button>
+          </span>
         </div></div></li>`;
     }
     return h + `</ul><p class="hint foot">버전은 지워지지 않고 쌓여요. <b>이어 쓰기</b>로 예전 버전을 작성 탭에 가져와 고친 뒤 저장하면 새 버전이 돼요.</p>`;
@@ -387,6 +394,66 @@
     }
   }
 
+  /* ---------- 마감일 달력 ---------- */
+  const WD = ["일", "월", "화", "수", "목", "금", "토"];
+  const p2 = (n) => String(n).padStart(2, "0");
+  const ymd = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  const fromYmd = (s) => (/^\d{4}-\d{2}-\d{2}$/.test(s || "") ? new Date(s + "T00:00:00") : null);
+  function dateLabel(s) {
+    const d = fromYmd(s);
+    return d ? `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()} (${WD[d.getDay()]})` : "";
+  }
+  function openCal(target, anchor) {
+    const value = target === "form" ? S.formDeadline : (S.db.apps[target] || {}).deadline || "";
+    const base = fromYmd(value) || new Date();
+    S.cal = { for: target, value, view: new Date(base.getFullYear(), base.getMonth(), 1) };
+    renderCal();
+    const c = $("#cal"), r = anchor.getBoundingClientRect();
+    const left = Math.min(Math.max(8, r.right - c.offsetWidth), innerWidth - c.offsetWidth - 8);
+    let top = r.bottom + 6;
+    if (top + c.offsetHeight > innerHeight - 8) top = Math.max(8, r.top - c.offsetHeight - 6);
+    c.style.left = Math.max(8, left) + "px";
+    c.style.top = top + "px";
+    c.querySelector(".day.sel, .day.today")?.focus();
+  }
+  function closeCal() { S.cal = null; $("#cal").hidden = true; }
+  function renderCal() {
+    const c = $("#cal");
+    if (!S.cal) { c.hidden = true; return; }
+    const { view, value } = S.cal, y = view.getFullYear(), m = view.getMonth();
+    const first = new Date(y, m, 1).getDay(), days = new Date(y, m + 1, 0).getDate(), today = ymd(new Date());
+    let cells = "<span></span>".repeat(first);
+    for (let d = 1; d <= days; d++) {
+      const s = `${y}-${p2(m + 1)}-${p2(d)}`, wd = (first + d - 1) % 7;
+      const cls = [wd === 0 ? "sun" : wd === 6 ? "sat" : "", s === today ? "today" : "", s === value ? "sel" : "", s < today ? "past" : ""].join(" ");
+      cells += `<button type="button" class="day ${cls}" data-act="calPick" data-d="${s}" aria-label="${m + 1}월 ${d}일 ${WD[wd]}요일" aria-pressed="${s === value}">${d}</button>`;
+    }
+    const dd = value ? dday(value) : null;
+    c.innerHTML = `<div class="cal-head"><button type="button" class="icon-btn sm" data-act="calNav" data-n="-1" aria-label="이전 달">${icon("back")}</button>
+        <b>${y}년 ${m + 1}월</b><button type="button" class="icon-btn sm flip" data-act="calNav" data-n="1" aria-label="다음 달">${icon("back")}</button></div>
+      <div class="cal-grid">${WD.map((w, i) => `<span class="wd ${i === 0 ? "sun" : i === 6 ? "sat" : ""}">${w}</span>`).join("")}${cells}</div>
+      <div class="cal-quick">${[[0, "오늘"], [7, "1주 뒤"], [14, "2주 뒤"], [30, "한 달 뒤"]].map(([n, t]) => `<button type="button" data-act="calQuick" data-n="${n}">${t}</button>`).join("")}</div>
+      <div class="cal-foot"><span>${value ? `${dateLabel(value)}${dd ? ` · <b class="${dd.cls}">${dd.txt}</b>` : ""}` : "마감일을 골라주세요"}</span>
+        ${value ? `<button type="button" class="btn ghost sm danger" data-act="calPick" data-d="">지우기</button>` : ""}</div>`;
+    c.hidden = false;
+  }
+  async function setDeadline(value) {
+    const target = S.cal && S.cal.for;
+    closeCal();
+    if (!target) return;
+    if (target === "form") {
+      S.formDeadline = value;
+      $("#fDeadline").value = value;
+      const b = $("#fDeadlineBtn");
+      b.classList.toggle("empty", !value);
+      b.lastElementChild.textContent = value ? dateLabel(value) : "날짜 선택";
+      b.focus();
+      return;
+    }
+    await mutate("updateApp", { id: target, patch: { deadline: value } }, value ? `마감일을 ${dateLabel(value)}로 정했어요` : "마감일을 지웠어요");
+    render();
+  }
+
   /* ---------- PC 폴더 자동 저장 ---------- */
   function fileAct(act) {
     return new Promise((resolve) => {
@@ -472,11 +539,16 @@
   /* ---------- 이벤트 ---------- */
   document.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-act]");
+    if (S.cal && !e.target.closest("#cal") && !(b && b.dataset.act === "calOpen")) closeCal();
     if (!b || b.disabled) return;
     const act = b.dataset.act, id = b.dataset.id, q = cur();
     switch (act) {
       case "menu": $("#menu").hidden = !$("#menu").hidden; b.setAttribute("aria-expanded", String(!$("#menu").hidden)); break;
       case "export": exportBackup(); break;
+      case "calOpen": if (S.cal && S.cal.for === b.dataset.for) closeCal(); else openCal(b.dataset.for, b); break;
+      case "calNav": S.cal.view = new Date(S.cal.view.getFullYear(), S.cal.view.getMonth() + Number(b.dataset.n), 1); renderCal(); break;
+      case "calPick": setDeadline(b.dataset.d); break;
+      case "calQuick": { const d = new Date(); d.setDate(d.getDate() + Number(b.dataset.n)); setDeadline(ymd(d)); break; }
       case "filePick": pickFolder(); break;
       case "fileGrant": regrant(); break;
       case "fileNow": { const st = await fileAct("sync"); if (st && st.state === "ok") toast("PC 폴더에 저장했어요"); break; }
@@ -503,7 +575,7 @@
         if (r) { toast(`불러왔어요: 지원서 ${r.apps}개, 문항 ${r.qs}개, 버전 ${r.vers}개`); S.view = "list"; setActive(null); render(); }
         break;
       }
-      case "addApp": S.addingApp = true; S.addingQ = null; S.view = "list"; render(); $("#fCompany")?.focus(); break;
+      case "addApp": S.formDeadline = ""; S.addingApp = true; S.addingQ = null; S.view = "list"; render(); $("#fCompany")?.focus(); break;
       case "cancelApp": S.addingApp = false; render(); break;
       case "addQ": S.addingQ = id; S.addingApp = false; render(); $("#fQTitle")?.focus(); break;
       case "cancelQ": S.addingQ = null; render(); break;
@@ -540,6 +612,14 @@
         break;
       }
       case "copyDraft": copy($("#draft").value, "답변을 복사했어요"); break;
+      case "verCopy": {
+        const v = S.db.vers[id];
+        if (await copy(v.text, `v${vno(q.id, id)} 답안을 복사했어요 · ${fmt(countIn(v.text, q.mode))}${unit(q.mode)}`)) {
+          b.classList.add("done"); b.lastChild.textContent = "복사됨";
+          setTimeout(() => { b.classList.remove("done"); b.lastChild.textContent = "복사"; }, 1600);
+        }
+        break;
+      }
       case "verOpen": S.openVer = S.openVer === id ? null : id; renderPane(); break;
       case "verDiff": openDiff(S.db.vers[id].text, draftOf(q), `v${vno(q.id, id)}`, "작성 중인 글"); break;
       case "verLoad": {
@@ -558,12 +638,18 @@
         S.confirm = null; S.cmp = S.cmp.filter((x) => x !== id);
         await mutate("delVersion", { id }, "버전을 삭제했어요");
         S.lastVerCount = versOf(q.id).length; render(); break;
-      case "cmpRun": {
-        if (S.cmp.length !== 2) return;
-        const [x, y] = S.cmp.map((i) => ({ id: i, ...S.db.vers[i] })).sort((m, n) => m.createdAt - n.createdAt);
-        openDiff(x.text, y.text, `v${vno(q.id, x.id)}`, `v${vno(q.id, y.id)}`);
+      case "cmpPick": {
+        S.cmp = S.cmp.includes(id) ? S.cmp.filter((x) => x !== id) : [...S.cmp, id];
+        if (S.cmp.length === 2) {
+          // 두 번째를 고르면 바로 비교 창을 열고 선택은 비운다 (예전 버전 → 최근 버전 순서)
+          const [x, y] = S.cmp.map((i) => ({ id: i, ...S.db.vers[i] })).sort((m, n) => m.createdAt - n.createdAt);
+          S.cmp = [];
+          renderPane();
+          openDiff(x.text, y.text, `v${vno(q.id, x.id)}`, `v${vno(q.id, y.id)}`);
+        } else renderPane();
         break;
       }
+      case "cmpClear": S.cmp = []; renderPane(); break;
       case "closeDiff": $("#overlay").hidden = true; break;
       case "action": S.action = id; preserve($("#pane"), renderPane); break;
       case "insert": insertPrompt(); break;
@@ -583,7 +669,7 @@
     const f = e.target;
     if (f.id === "appForm") {
       const r = await mutate("addApp", { company: $("#fCompany").value, role: $("#fRole").value, deadline: $("#fDeadline").value });
-      if (r) { S.addingApp = false; S.addingQ = r.id; render(); $("#fQTitle")?.focus(); toast("지원서를 추가했어요. 이제 문항을 넣어주세요."); }
+      if (r) { S.addingApp = false; S.formDeadline = ""; S.addingQ = r.id; render(); $("#fQTitle")?.focus(); toast("지원서를 추가했어요. 이제 문항을 넣어주세요."); }
     }
     if (f.id === "qForm") {
       const r = await mutate("addQ", { appId: f.dataset.app, title: $("#fQTitle").value, limit: $("#fQLimit").value, mode: $("#fQMode").value });
@@ -605,11 +691,6 @@
 
   document.addEventListener("change", async (e) => {
     const t = e.target, q = cur();
-    if (t.dataset.cmp) {
-      const id = t.dataset.cmp;
-      S.cmp = t.checked ? [...S.cmp.filter((x) => x !== id), id].slice(-2) : S.cmp.filter((x) => x !== id);
-      renderPane(); return;
-    }
     if (t.id === "importFile") return readImport(t);
     if (!q) return;
     if (t.id === "qTitle" && t.value.trim() && t.value.trim() !== q.title) await mutate("updateQ", { id: q.id, patch: { title: t.value } });
@@ -619,12 +700,15 @@
   });
 
   document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && S.cal) { const t = S.cal.for; closeCal(); (t === "form" ? $("#fDeadlineBtn") : document.querySelector(`[data-act="calOpen"][data-for="${t}"]`))?.focus(); return; }
     if (e.key === "Escape" && !$("#overlay").hidden) $("#overlay").hidden = true;
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s" && S.view === "q" && S.tab === "write") {
       e.preventDefault();
       document.querySelector('[data-act="commit"]')?.click();
     }
   });
+  addEventListener("scroll", () => { if (S.cal) closeCal(); }, { passive: true });
+  addEventListener("resize", () => { if (S.cal) closeCal(); });
   $("#overlay").addEventListener("click", (e) => { if (e.target.id === "overlay") $("#overlay").hidden = true; });
 
   /* ---------- 백업 ---------- */
