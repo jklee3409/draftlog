@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Draftlog</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header class="bar">
+    <b class="brand">Draftlog</b>
+  </header>
+  <main id="main"></main>
+
+  <div class="overlay" id="overlay" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
+      <div class="dlg-head"><h2 id="dlgTitle">비교</h2><span class="dstat" id="dstat"></span><button class="btn" data-act="closeDiff">닫기</button></div>
+      <div class="diff" id="diffBody"></div>
+      <div class="legend"><span><del>삭제</del> 이전에만 있음</span><span><ins>추가</ins> 이후에만 있음</span></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script src="../lib/text.js"></script>
+  <script src="panel.js"></script>
+</body>
+</html>
