@@ -42,21 +42,28 @@
     .pill { position: fixed; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px 5px 8px; border-radius: 999px;
       background: var(--accent); color: var(--accent-ink); border: 0; font-weight: 600; font-size: 12.5px; cursor: pointer; box-shadow: var(--shadow); white-space: nowrap; }
     .pill:hover { filter: brightness(1.08); }
-    .pill .mark { width: 16px; height: 16px; border-radius: 4px; background: var(--accent-ink); color: var(--accent); display: grid; place-items: center; font-size: 11px; font-weight: 800; }
+    .pill .mark { width: 18px; height: 18px; border-radius: 5px; flex: none; }
+    .pill { transition: transform .12s, filter .12s; }
+    .pill:active { transform: scale(.97); }
+    .brand { width: 22px; height: 22px; flex: none; border-radius: 6px; }
     .card { position: fixed; top: 72px; right: 20px; width: min(420px, calc(100vw - 24px)); max-height: calc(100vh - 96px); overflow: auto;
-      background: var(--bg); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 14px 16px 16px; display: grid; gap: 10px; }
+      background: var(--bg); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 14px 16px 16px; display: grid; gap: 12px; animation: rise .18s ease-out; }
+    @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+    @media (prefers-reduced-motion: reduce) { .card { animation: none; } }
     .head { display: flex; align-items: center; gap: 8px; }
     .head b { flex: 1; font-size: 14px; }
     .x { border: 0; background: transparent; font-size: 18px; line-height: 1; color: var(--muted); cursor: pointer; padding: 2px 6px; border-radius: 6px; }
     .x:hover { background: var(--sunk); color: var(--ink); }
     label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
-    select, input[type=text], textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; background: var(--sunk); color: var(--ink); }
+    select, input[type=text], textarea { width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; background: var(--sunk); color: var(--ink); }
+    select:focus, input[type=text]:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--soft); background: var(--bg); }
+    input[type=checkbox] { accent-color: var(--accent); }
     textarea { min-height: 180px; resize: vertical; font-family: "Gowun Batang","AppleMyungjo","Batang",serif; font-size: 14px; line-height: 1.75; }
     .count { font: 12px ui-monospace, Menlo, Consolas, monospace; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
     .count.over b { color: var(--over); }
     .check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink); }
     .acts { display: flex; gap: 8px; justify-content: flex-end; }
-    .btn { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 7px 13px; cursor: pointer; font-size: 12.5px; }
+    .btn { border: 1px solid var(--line); background: var(--bg); border-radius: 9px; padding: 8px 14px; cursor: pointer; font-size: 12.5px; font-weight: 500; }
     .btn:hover { border-color: var(--muted); }
     .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
     .note { font-size: 12.5px; color: var(--muted); margin: 0; }
@@ -65,11 +72,12 @@
   `);
   root.adoptedStyleSheets = [sheet];
   root.innerHTML = `
-    <button class="pill" id="hoverPill" hidden><span class="mark">자</span>자소서에 저장</button>
-    <button class="pill" id="selPill" hidden><span class="mark">자</span>선택 영역 저장</button>
+    <button class="pill" id="hoverPill" hidden><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#fff"/><rect x="11" y="4" width="15" height="19" rx="2.5" fill="#1D6A4E" fill-opacity=".3"/><rect x="6" y="8" width="16" height="20" rx="3" fill="#1D6A4E"/><rect x="9" y="12.5" width="10" height="2.5" rx="1.25" fill="#fff"/><circle cx="23.5" cy="24.5" r="5.5" fill="#F2B544" stroke="#fff" stroke-width="2"/></svg>자소서에 저장</button>
+    <button class="pill" id="selPill" hidden><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#fff"/><rect x="11" y="4" width="15" height="19" rx="2.5" fill="#1D6A4E" fill-opacity=".3"/><rect x="6" y="8" width="16" height="20" rx="3" fill="#1D6A4E"/><rect x="9" y="12.5" width="10" height="2.5" rx="1.25" fill="#fff"/><circle cx="23.5" cy="24.5" r="5.5" fill="#F2B544" stroke="#fff" stroke-width="2"/></svg>선택 영역 저장</button>
     <div class="card" id="card" role="dialog" aria-label="자소서 버전으로 저장" hidden></div>
     <div class="toast" id="toast" role="status" hidden></div>`;
   const $ = (id) => root.getElementById(id);
+  const BRAND = `<svg class="brand" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#1D6A4E"/><rect x="11" y="4" width="15" height="19" rx="2.5" fill="#fff" fill-opacity=".35"/><rect x="6" y="8" width="16" height="20" rx="3" fill="#fff"/><rect x="9" y="12.5" width="10" height="2.5" rx="1.25" fill="#1D6A4E"/><circle cx="23.5" cy="24.5" r="5.5" fill="#F2B544" stroke="#154F39" stroke-width="2"/></svg>`;
   document.documentElement.appendChild(host);
 
   // 카드 안에서 친 키가 채팅 페이지 단축키로 새지 않게 막는다
@@ -174,8 +182,8 @@
     const card = $("card");
     const qEntries = Object.entries(qs);
     if (!qEntries.length) {
-      card.innerHTML = `<div class="head"><b>저장할 문항이 없어요</b><button class="x" data-act="close" aria-label="닫기">×</button></div>
-        <p class="note">Draftlog 패널에서 지원서와 문항을 먼저 만들어 주세요. 툴바의 Draftlog 아이콘을 눌러도 열려요.</p>
+      card.innerHTML = `<div class="head">${BRAND}<b>저장할 문항이 없어요</b><button class="x" data-act="close" aria-label="닫기">×</button></div>
+        <p class="note">Draft Log 패널에서 지원서와 문항을 먼저 만들어 주세요. 툴바의 Draft Log 아이콘을 눌러도 열려요.</p>
         <div class="acts"><button class="btn primary" data-act="openPanel">패널 열기</button></div>`;
       card.hidden = false;
       return;
@@ -190,12 +198,12 @@
           .join("")}</optgroup>`;
       }).join("");
     card.innerHTML = `
-      <div class="head"><b>자소서 버전으로 저장</b><button class="x" data-act="close" aria-label="닫기">×</button></div>
+      <div class="head">${BRAND}<b>자소서 버전으로 저장</b><button class="x" data-act="close" aria-label="닫기">×</button></div>
       <label>저장할 문항<select id="dlQ">${groups}</select></label>
       <label>내용 <textarea id="dlText" spellcheck="false"></textarea></label>
       <div class="count" id="dlCount"></div>
       <label>메모<input type="text" id="dlMsg" maxlength="120"></label>
-      <label class="check"><input type="checkbox" id="dlDraft" checked> 패널의 초안도 이 내용으로 바꾸기</label>
+      <label class="check"><input type="checkbox" id="dlDraft" checked> 작성 탭의 글도 이 내용으로 바꾸기</label>
       <div class="acts"><button class="btn" data-act="close">취소</button><button class="btn primary" data-act="save" id="dlSave">버전으로 저장</button></div>`;
     $("dlText").value = text;
     $("dlMsg").value = defaultMsg;
@@ -234,7 +242,7 @@
     if (act === "openPanel") {
       if (!alive()) return toast("페이지를 새로고침해 주세요.");
       const r = await chrome.runtime.sendMessage({ type: "dl:openPanel" }).catch(() => null);
-      if (!r || !r.ok) toast("툴바의 Draftlog 아이콘을 눌러 패널을 열어주세요.");
+      if (!r || !r.ok) toast("툴바의 Draft Log 아이콘을 눌러 패널을 열어주세요.");
       return closeCard();
     }
     if (act === "save") {

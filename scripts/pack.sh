@@ -7,6 +7,6 @@ VERSION=$(node -p "require('./manifest.json').version")
 OUT="dist/draftlog-${VERSION}.zip"
 mkdir -p dist
 rm -f "$OUT"
-zip -rq "$OUT" manifest.json background.js lib sidepanel content icons README.md
+zip -rq "$OUT" manifest.json background.js lib sidepanel content icons README.md -x "icons/src/*"
 echo "만들었어요: $OUT"
 unzip -l "$OUT" | tail -1

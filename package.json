@@ -5,9 +5,11 @@
   "description": "ChatGPT·Claude로 쓴 자소서 답변을 문항별 버전으로 관리하는 크롬 확장 프로그램",
   "type": "module",
   "scripts": {
+    "dev": "node scripts/dev.mjs",
     "test": "node --test tests/unit.test.mjs",
     "test:e2e": "node tests/e2e/run.mjs",
-    "pack": "bash scripts/pack.sh"
+    "pack": "bash scripts/pack.sh",
+    "icons": "node scripts/icons.mjs"
   },
   "devDependencies": {
     "playwright": "^1.63.0"

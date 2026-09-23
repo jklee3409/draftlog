@@ -3,27 +3,51 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Draftlog</title>
+  <title>Draft Log</title>
+  <link rel="icon" href="../icons/icon32.png">
   <link rel="stylesheet" href="panel.css">
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-logo" viewBox="0 0 32 32">
+      <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#23855F"/><stop offset="1" stop-color="#11432F"/></linearGradient></defs>
+      <rect width="32" height="32" rx="8" fill="url(#lg)"/>
+      <rect x="11" y="4" width="15" height="19" rx="2.5" fill="#fff" fill-opacity=".35"/>
+      <rect x="6" y="8" width="16" height="20" rx="3" fill="#fff"/>
+      <rect x="9" y="12.5" width="10" height="2.5" rx="1.25" fill="#1D6A4E"/>
+      <rect x="9" y="17.5" width="7" height="2" rx="1" fill="#1D6A4E" fill-opacity=".35"/>
+      <circle cx="23.5" cy="24.5" r="5.5" fill="#F2B544" stroke="#154F39" stroke-width="2"/>
+    </symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6L12 16.6l-5 2.6.9-5.6-4-3.9 5.6-.8z" fill="currentColor"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M10 4h4M6.5 7l.8 12a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4l.8-12M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M17 14v4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 5 18V8.5A1.5 1.5 0 0 1 6.5 7H10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  </svg>
+
   <header class="bar">
-    <b class="brand">Draftlog</b>
-    <input id="search" type="search" placeholder="모든 버전에서 검색" autocomplete="off" aria-label="모든 버전에서 검색">
-    <button class="btn ghost" data-act="menu" aria-haspopup="true" id="menuBtn">백업</button>
+    <span class="brand" aria-label="Draft Log"><svg class="logo" aria-hidden="true"><use href="#i-logo"/></svg><span>Draft<em>Log</em></span></span>
+    <label class="search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="search" type="search" placeholder="모든 버전 검색" autocomplete="off" aria-label="모든 버전에서 검색"></label>
+    <button class="icon-btn" data-act="menu" aria-haspopup="true" aria-label="백업 메뉴" title="백업" id="menuBtn"><svg aria-hidden="true"><use href="#i-more"/></svg></button>
   </header>
   <div class="menu" id="menu" hidden>
-    <button class="btn" data-act="export">백업 파일 내보내기</button>
-    <label class="btn" for="importFile">백업 파일 불러오기</label>
-    <input id="importFile" type="file" accept="application/json,.json" hidden>
+    <b class="menu-title">백업</b>
     <p class="hint">데이터는 이 브라우저에만 저장돼요. 컴퓨터를 바꾸거나 확장을 지우기 전에 백업해 두세요.</p>
+    <div class="menu-acts">
+      <button class="btn" data-act="export">백업 파일 내보내기</button>
+      <label class="btn" for="importFile">백업 파일 불러오기</label>
+    </div>
+    <input id="importFile" type="file" accept="application/json,.json" hidden>
     <div id="importConfirm"></div>
   </div>
   <main id="main"></main>
 
   <div class="overlay" id="overlay" hidden>
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
-      <div class="dlg-head"><h2 id="dlgTitle">비교</h2><span class="dstat" id="dstat"></span><button class="btn" data-act="closeDiff">닫기</button></div>
+      <div class="dlg-head"><h2 id="dlgTitle">비교</h2><span class="dstat" id="dstat"></span><button class="icon-btn" data-act="closeDiff" aria-label="닫기"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div>
       <div class="diff" id="diffBody"></div>
       <div class="legend"><span><del>삭제</del> 이전에만 있음</span><span><ins>추가</ins> 이후에만 있음</span></div>
     </div>
