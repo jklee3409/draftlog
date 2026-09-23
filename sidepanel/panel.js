@@ -1,9 +1,10 @@
 /* Draftlog — 사이드 패널 */
 (function () {
   "use strict";
-  const { counts, countIn, unit, fmt, diff, diffStats, MODES, SOURCES } = window.DL;
+  const { counts, countIn, unit, fmt, diff, diffStats, buildPrompt, MODES, SOURCES, ACTIONS, sourceOf } = window.DL;
   const $ = (s) => document.querySelector(s);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const CHAT_HOSTS = ["chatgpt.com", "chat.openai.com", "claude.ai"];
 
   const S = {
     db: { apps: {}, qs: {}, vers: {} },
@@ -12,7 +13,8 @@
     tab: "write",          // write | vers | ask
     pending: {},           // 저장 대기 중인 초안
     addingApp: false, addingQ: null, confirm: null,
-    openVer: null, cmp: [],
+    openVer: null, cmp: [], action: "feedback",
+    target: null,          // {tabId, source, title}
     edQ: null, lastVerCount: null,
   };
 
@@ -133,7 +135,8 @@
       return `<div class="welcome"><h2>ChatGPT·Claude로 쓴 자소서를 버전으로 남겨요</h2>
         <ol>
           <li><b>지원서</b>와 <b>문항</b>을 만들어요.</li>
-          <li><b>작성</b> 탭에서 답변을 쓰고 버전으로 저장해요.</li>
+          <li><b>AI에게 묻기</b> 탭에서 첨삭 요청을 채팅 입력창에 넣어요.</li>
+          <li>답이 오면 답변 위에 뜨는 <b>자소서에 저장</b>을 눌러요.</li>
           <li><b>버전</b> 탭에서 무엇이 바뀌었는지 비교해요.</li>
         </ol>
         <button class="btn primary" data-act="addApp">첫 지원서 추가</button>${S.addingApp ? appFormHTML() : ""}</div>`;
@@ -180,6 +183,7 @@
       <div class="tabs" role="tablist">
         <button role="tab" data-act="tab" data-id="write" aria-selected="${S.tab === "write"}">작성</button>
         <button role="tab" data-act="tab" data-id="vers" aria-selected="${S.tab === "vers"}" id="versTab">버전 <span class="num">${n}</span></button>
+        <button role="tab" data-act="tab" data-id="ask" aria-selected="${S.tab === "ask"}">AI에게 묻기</button>
       </div>
       <div class="pane" id="pane"></div></div>`;
   }
@@ -209,8 +213,10 @@
         if (document.activeElement !== ta && S.pending[q.id] === undefined && ta.value !== q.draft) ta.value = q.draft;
       }
       updateCounter();
-    } else {
+    } else if (S.tab === "vers") {
       pane.innerHTML = versHTML(q);
+    } else {
+      pane.innerHTML = askHTML(q);
     }
   }
 
@@ -262,6 +268,26 @@
     return h + "</ul>";
   }
 
+  function askHTML(q) {
+    const a = S.db.apps[q.appId] || {};
+    const t = S.target;
+    const targetTxt = t ? `${SOURCES[t.source]} 탭에 넣어요 · ${esc(t.title || "")}` : "ChatGPT나 Claude 탭이 열려 있지 않아요. 넣기를 누르면 복사만 돼요.";
+    return `<div class="ask">
+      <div class="target ${t ? t.source : ""}"><i></i><span>${targetTxt}</span></div>
+      <details class="jd" id="jdBox" ${a.jd ? "" : "open"}><summary>회사·공고 메모<small>이 지원서의 모든 문항에 함께 들어가요</small></summary>
+        <textarea id="jd" rows="4" placeholder="채용공고의 주요 업무, 자격요건, 인재상을 붙여넣으세요.">${esc(a.jd || "")}</textarea></details>
+      <h3>요청</h3>
+      <div class="seg">${Object.entries(ACTIONS).map(([k, v]) => `<button data-act="action" data-id="${k}" aria-pressed="${S.action === k}">${v.label}</button>`).join("")}</div>
+      <p class="adesc">${ACTIONS[S.action].desc}</p>
+      <textarea id="extra" rows="2" placeholder="${S.action === "custom" ? "예: 리더십보다 문제 해결 과정을 강조해서 다시 써줘" : "추가로 바라는 점 (선택) 예: 두괄식 유지"}"></textarea>
+      <div class="ask-btns"><button class="btn primary" data-act="insert">${t ? SOURCES[t.source] + " 입력창에 넣기" : "요청문 복사"}</button><button class="btn" data-act="copyPrompt">복사만</button></div>
+      <ol class="steps">
+        <li>입력창에 들어간 요청을 확인하고 <b>보내기</b>를 눌러요.</li>
+        <li>답이 오면 답변에 마우스를 올려 <b>자소서에 저장</b>을 눌러요. 일부만 쓰려면 드래그해서 저장해요.</li>
+        <li>이 문항의 새 버전으로 들어와요. <b>버전</b> 탭에서 비교해요.</li>
+      </ol></div>`;
+  }
+
   /* ---------- 초안 자동 저장 ---------- */
   let draftTimer = null, draftWrite = Promise.resolve();
   async function flushDraft(qid) {
@@ -279,6 +305,47 @@
     const ta = $("#draft"); if (ta) ta.value = text;
     updateCounter();
     flushDraft(q.id);
+  }
+
+  /* ---------- 채팅 탭 찾기 / 입력창에 넣기 ---------- */
+  async function findTarget() {
+    try {
+      const tabs = await chrome.tabs.query({ active: true });
+      const chat = tabs.filter((t) => t.url && CHAT_HOSTS.some((h) => new URL(t.url).hostname === h));
+      let pick = null;
+      if (chat.length) {
+        const win = await chrome.windows.getLastFocused({ windowTypes: ["normal"] }).catch(() => null);
+        pick = chat.find((t) => win && t.windowId === win.id) || chat[0];
+      }
+      const next = pick ? { tabId: pick.id, source: sourceOf(new URL(pick.url).hostname), title: pick.title } : null;
+      const changed = JSON.stringify(next) !== JSON.stringify(S.target);
+      S.target = next;
+      if (changed && S.view === "q" && S.tab === "ask") preserve($("#pane"), renderPane);
+    } catch { S.target = null; }
+  }
+  function currentPrompt() {
+    const q = cur(), a = S.db.apps[q.appId] || {};
+    return buildPrompt({ action: S.action, company: a.company, role: a.role, jd: a.jd, title: q.title, limit: q.limit, mode: q.mode, draft: draftOf(q), extra: ($("#extra")?.value || "").trim() });
+  }
+  function checkAsk() {
+    const q = cur();
+    const extra = ($("#extra")?.value || "").trim();
+    if (S.action === "custom" && !extra) { toast("어떻게 고칠지 요청을 적어주세요."); return false; }
+    if (S.action !== "custom" && !draftOf(q).trim()) { toast("작성 탭에 답변 초안이 있어야 해요. 없으면 ‘직접’으로 새로 써달라고 해보세요."); return false; }
+    return true;
+  }
+  async function insertPrompt() {
+    if (!checkAsk()) return;
+    const text = currentPrompt();
+    await findTarget();
+    if (!S.target) return copy(text, "요청문을 복사했어요. ChatGPT나 Claude 입력창에 붙여넣으세요.");
+    try {
+      const r = await chrome.tabs.sendMessage(S.target.tabId, { type: "dl:insert", text });
+      if (r && r.ok) toast(`${SOURCES[S.target.source]} 입력창에 넣었어요. 확인하고 보내세요.`);
+      else throw new Error("no composer");
+    } catch {
+      copy(text, "입력창을 찾지 못해 복사했어요. 탭을 새로고침했거나 붙여넣어 주세요.");
+    }
   }
 
   /* ---------- 확인이 필요한 삭제 ---------- */
@@ -325,6 +392,7 @@
       case "tab":
         if (S.tab === "write" && q) await flushDraft(q.id);
         S.tab = id; syncHead(q); $("#pane").innerHTML = ""; renderPane();
+        if (id === "ask") findTarget();
         break;
       case "commit": {
         if (!q) return;
@@ -357,6 +425,9 @@
         break;
       }
       case "closeDiff": $("#overlay").hidden = true; break;
+      case "action": S.action = id; preserve($("#pane"), renderPane); break;
+      case "insert": insertPrompt(); break;
+      case "copyPrompt": if (checkAsk()) copy(currentPrompt(), "요청문을 복사했어요"); break;
     }
   });
 
@@ -395,6 +466,7 @@
     if (t.id === "qTitle" && t.value.trim() && t.value.trim() !== q.title) await mutate("updateQ", { id: q.id, patch: { title: t.value } });
     if (t.id === "qLimit") { await mutate("updateQ", { id: q.id, patch: { limit: t.value } }); updateCounter(); }
     if (t.id === "qMode") { await mutate("updateQ", { id: q.id, patch: { mode: t.value } }); updateCounter(); }
+    if (t.id === "jd") await mutate("updateApp", { id: q.appId, patch: { jd: t.value } }, "공고 메모를 저장했어요");
   });
 
   document.addEventListener("keydown", (e) => {
@@ -421,6 +493,9 @@
     }
     render();
   });
+  chrome.tabs.onActivated.addListener(findTarget);
+  chrome.tabs.onUpdated.addListener((_, info) => { if (info.url || info.title || info.status === "complete") findTarget(); });
+  if (chrome.windows && chrome.windows.onFocusChanged) chrome.windows.onFocusChanged.addListener(findTarget);
   window.addEventListener("pagehide", () => { if (S.active) flushDraft(S.active); });
 
   /* ---------- 시작 ---------- */
@@ -428,5 +503,6 @@
     await reload();
     if (S.active) { S.view = "q"; S.lastVerCount = versOf(S.active).length; }
     render();
+    findTarget();
   })();
 })();

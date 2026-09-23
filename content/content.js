@@ -2,6 +2,7 @@
  * ChatGPT·Claude 페이지에 붙는 부분.
  * - 답변에 마우스를 올리면 "자소서에 저장" 버튼
  * - 텍스트를 드래그하면 "선택 영역 저장" 버튼 (사이트 구조가 바뀌어도 동작하는 대비책)
+ * - 사이드 패널이 보낸 요청문을 채팅 입력창에 넣기
  * 페이지 DOM(React)은 건드리지 않고, body 끝에 붙인 shadow DOM 하나에만 그린다.
  */
 (function () {
@@ -19,6 +20,10 @@
     SITE === "gpt"
       ? ['[data-message-author-role="assistant"]']
       : ["[data-is-streaming]", ".font-claude-response", ".font-claude-message"];
+  const COMPOSER_SELECTORS =
+    SITE === "gpt"
+      ? ["#prompt-textarea", 'div.ProseMirror[contenteditable="true"]', "form textarea"]
+      : ['div.ProseMirror[contenteditable="true"]', 'fieldset [contenteditable="true"]', '[contenteditable="true"]', "textarea"];
 
   /* ---------- shadow DOM ---------- */
   const host = document.createElement("div");
@@ -250,9 +255,51 @@
     }
   });
 
-  /* ---------- 우클릭 메뉴 ---------- */
+  /* ---------- 입력창에 넣기 ---------- */
+  function visible(el) {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
+  }
+  function findComposer() {
+    for (const s of COMPOSER_SELECTORS) {
+      const list = [...document.querySelectorAll(s)].filter((el) => !host.contains(el) && visible(el));
+      if (list.length) return list[list.length - 1];
+    }
+    return null;
+  }
+  function insertInto(el, text) {
+    el.focus();
+    if (el.tagName === "TEXTAREA") {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+      setter.call(el, (el.value.trim() ? el.value + "\n\n" : "") + text);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      return true;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    const before = (el.innerText || "").trim();
+    // ProseMirror 입력창은 붙여넣기 이벤트를 가장 안정적으로 받아들인다 (줄바꿈 유지)
+    try {
+      const dt = new DataTransfer();
+      dt.setData("text/plain", text);
+      el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+    } catch {}
+    if ((el.innerText || "").trim() !== before) return true;
+    document.execCommand("insertText", false, text);
+    return (el.innerText || "").trim() !== before;
+  }
+
   chrome.runtime.onMessage.addListener((msg, _sender, send) => {
     if (!msg || typeof msg !== "object") return;
+    if (msg.type === "dl:insert") {
+      const el = findComposer();
+      send({ ok: Boolean(el && insertInto(el, String(msg.text || ""))) });
+      return;
+    }
     if (msg.type === "dl:openSave") {
       const sel = getSelection();
       const text = DL.cleanText((sel && sel.toString()) || msg.fallbackText || "");
