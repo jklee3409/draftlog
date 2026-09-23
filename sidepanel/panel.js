@@ -11,6 +11,7 @@
     active: null,          // 선택한 문항 id
     view: "list",          // list | q
     tab: "write",          // write | vers | ask
+    search: "",
     pending: {},           // 저장 대기 중인 초안
     addingApp: false, addingQ: null, confirm: null,
     openVer: null, cmp: [], action: "feedback",
@@ -111,6 +112,7 @@
   /* ---------- 그리기 ---------- */
   function render() {
     const main = $("#main");
+    if (S.search.trim()) { S.edQ = null; main.innerHTML = searchHTML(); return; }
     const q = cur();
     if (S.view === "q" && q) {
       if (S.edQ !== q.id || !$("#draft")) {
@@ -288,6 +290,27 @@
       </ol></div>`;
   }
 
+  function searchHTML() {
+    const term = S.search.trim().toLowerCase();
+    const hits = [];
+    for (const [qid, q] of Object.entries(S.db.qs)) {
+      const a = S.db.apps[q.appId] || {};
+      versOf(qid).forEach((v, i) => { if (v.text.toLowerCase().includes(term)) hits.push({ qid, vid: v.id, label: `v${i + 1}`, src: v.source, text: v.text, a, q, ts: v.createdAt }); });
+      const d = draftOf({ id: qid, ...q });
+      if (d.toLowerCase().includes(term) && !versOf(qid).some((v) => v.text === d)) hits.push({ qid, label: "초안", text: d, a, q, ts: q.updatedAt });
+    }
+    hits.sort((x, y) => y.ts - x.ts);
+    const snip = (t) => {
+      const i = t.toLowerCase().indexOf(term), s = Math.max(0, i - 40), e = Math.min(t.length, i + term.length + 70);
+      const part = t.slice(s, e), k = part.toLowerCase().indexOf(term);
+      return (s ? "…" : "") + esc(part.slice(0, k)) + "<mark>" + esc(part.slice(k, k + term.length)) + "</mark>" + esc(part.slice(k + term.length)) + (e < t.length ? "…" : "");
+    };
+    return `<div class="results"><div class="hist-top"><span>“${esc(S.search.trim())}” ${hits.length}건</span><button class="btn ghost sm" data-act="clearSearch">검색 닫기</button></div>
+      ${hits.map((h) => `<button class="res" data-act="goHit" data-q="${h.qid}" data-v="${h.vid || ""}">
+        <span class="rh"><b>${esc(h.a.company || "")}</b><span>${esc(h.q.title.slice(0, 30))}${h.q.title.length > 30 ? "…" : ""}</span><span class="chip ${h.src || "me"}">${h.label}${h.src ? " · " + SOURCES[h.src] : ""}</span></span>
+        <span class="rs">${snip(h.text)}</span></button>`).join("") || '<p class="hint">일치하는 답변이 없어요.</p>'}</div>`;
+  }
+
   /* ---------- 초안 자동 저장 ---------- */
   let draftTimer = null, draftWrite = Promise.resolve();
   async function flushDraft(qid) {
@@ -428,6 +451,13 @@
       case "action": S.action = id; preserve($("#pane"), renderPane); break;
       case "insert": insertPrompt(); break;
       case "copyPrompt": if (checkAsk()) copy(currentPrompt(), "요청문을 복사했어요"); break;
+      case "clearSearch": S.search = ""; $("#search").value = ""; render(); break;
+      case "goHit": {
+        S.search = ""; $("#search").value = "";
+        await openQ(b.dataset.q, b.dataset.v ? "vers" : "write");
+        if (b.dataset.v) { S.openVer = b.dataset.v; renderPane(); }
+        break;
+      }
     }
   });
 
@@ -453,6 +483,7 @@
       clearTimeout(draftTimer);
       draftTimer = setTimeout(() => flushDraft(q.id), 700);
     }
+    if (t.id === "search") { S.search = t.value; render(); }
   });
 
   document.addEventListener("change", async (e) => {
