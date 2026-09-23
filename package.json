@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/unit.test.mjs",
-    "test:e2e": "node tests/e2e/run.mjs"
+    "test:e2e": "node tests/e2e/run.mjs",
+    "pack": "bash scripts/pack.sh"
   },
   "devDependencies": {
     "playwright": "^1.63.0"
