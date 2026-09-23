@@ -1,4 +1,4 @@
-/* Draftlog — 사이드 패널 */
+/* Draft Log — 사이드 패널 */
 (function () {
   "use strict";
   const { counts, countIn, unit, fmt, diff, diffStats, buildPrompt, MODES, SOURCES, ACTIONS, sourceOf } = window.DL;
@@ -61,6 +61,7 @@
     Object.entries(S.db.qs).filter(([, q]) => q.appId === aid).map(([id, q]) => ({ id, ...q })).sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
   const appsSorted = () =>
     Object.entries(S.db.apps).map(([id, a]) => ({ id, ...a })).sort((a, b) => (a.deadline || "9999").localeCompare(b.deadline || "9999") || a.createdAt - b.createdAt);
+  const icon = (name, cls = "") => `<svg class="ic ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
   const vno = (qid, id) => versOf(qid).findIndex((v) => v.id === id) + 1;
   function dday(d) {
     if (!d) return null;
@@ -93,7 +94,7 @@
     $("#dstat").innerHTML = `<span class="p">+${fmt(st.add)}</span> / <span class="m">−${fmt(st.del)}</span>자`;
     $("#diffBody").innerHTML = ops.map((o) => (o.t === "eq" ? esc(o.s) : o.t === "add" ? `<ins>${esc(o.s)}</ins>` : `<del>${esc(o.s)}</del>`)).join("");
     $("#overlay").hidden = false;
-    $("#overlay .btn").focus();
+    $('#overlay [data-act="closeDiff"]').focus();
   }
   /** 다시 그려도 입력 중인 값과 포커스를 지킨다 */
   function preserve(root, fn) {
@@ -131,32 +132,39 @@
 
   function listHTML() {
     const apps = appsSorted();
-    let h = `<div class="list"><div class="list-head"><h2>지원서</h2><button class="btn sm" data-act="addApp">+ 지원서</button></div>`;
-    if (S.addingApp) h += appFormHTML();
-    if (!apps.length && !S.addingApp) {
-      return `<div class="welcome"><h2>ChatGPT·Claude로 쓴 자소서를 버전으로 남겨요</h2>
-        <ol>
-          <li><b>지원서</b>와 <b>문항</b>을 만들어요.</li>
-          <li><b>AI에게 묻기</b> 탭에서 첨삭 요청을 채팅 입력창에 넣어요.</li>
-          <li>답이 오면 답변 위에 뜨는 <b>자소서에 저장</b>을 눌러요.</li>
-          <li><b>버전</b> 탭에서 무엇이 바뀌었는지 비교해요.</li>
+    if (!apps.length) {
+      return `<div class="welcome">
+        <svg class="welcome-logo" aria-hidden="true"><use href="#i-logo"/></svg>
+        <h2>AI와 고친 자소서,<br>버전으로 남겨요</h2>
+        <p class="lead">ChatGPT·Claude 답변을 문항별 버전으로 저장하고, 무엇이 바뀌었는지 비교하세요.</p>
+        <ol class="howto">
+          <li><span><b>지원서</b>와 <b>문항</b>을 만들어요</span></li>
+          <li><span><b>AI에게 묻기</b>로 첨삭 요청을 채팅창에 넣어요</span></li>
+          <li><span>답변 위 <b>자소서에 저장</b>을 눌러요</span></li>
+          <li><span><b>버전</b> 탭에서 바뀐 부분을 비교해요</span></li>
         </ol>
-        <button class="btn primary" data-act="addApp">첫 지원서 추가</button>${S.addingApp ? appFormHTML() : ""}</div>`;
+        ${S.addingApp ? appFormHTML() : `<button class="btn primary lg" data-act="addApp">${icon("plus")}첫 지원서 추가</button>`}</div>`;
     }
+    let h = `<div class="list"><div class="list-head"><h2>지원서 <span class="num">${apps.length}</span></h2><button class="btn sm" data-act="addApp">${icon("plus")}지원서</button></div>`;
+    if (S.addingApp) h += appFormHTML();
     for (const a of apps) {
-      const d = dday(a.deadline);
-      h += `<div class="app"><div class="app-row"><strong>${esc(a.company)}</strong>${d ? `<span class="dday ${d.cls}">${d.txt}</span>` : ""}</div>
-        <div class="role">${esc(a.role || "직무 미입력")}</div><ul class="qlist">`;
-      for (const q of qsOf(a.id)) {
-        const n = versOf(q.id).length, c = countIn(draftOf(q), q.mode);
+      const d = dday(a.deadline), qs = qsOf(a.id);
+      h += `<section class="app"><div class="app-head"><div class="app-name"><strong>${esc(a.company)}</strong><span class="role">${esc(a.role || "직무 미입력")}${a.deadline ? ` · ${a.deadline.slice(5).replace("-", "/")} 마감` : ""}</span></div>
+        ${d ? `<span class="dday ${d.cls}">${d.txt}</span>` : ""}</div>`;
+      if (qs.length) h += `<ul class="qlist">`;
+      for (const q of qs) {
+        const vs = versOf(q.id), c = countIn(draftOf(q), q.mode), pct = q.limit ? Math.min(100, (c / q.limit) * 100) : 0;
+        const st = q.limit && c > q.limit ? "over" : q.limit && c / q.limit >= 0.9 ? "near" : "";
         h += `<li><button class="q-btn ${q.id === S.active ? "sel" : ""}" data-act="selQ" data-id="${q.id}"><span class="qt">${esc(q.title)}</span>
-          <span class="qm ${q.limit && c > q.limit ? "over" : ""}">v${n} · ${fmt(c)}/${fmt(q.limit)}${unit(q.mode)}</span></button></li>`;
+          <span class="qm"><span class="mini ${st}"><i style="width:${pct}%"></i></span><span class="num ${st}">${fmt(c)}${q.limit ? "/" + fmt(q.limit) : ""}${unit(q.mode)}</span>
+          <span class="vc">${vs.some((v) => v.final) ? icon("star", "fin") : ""}v${vs.length}</span></span></button></li>`;
       }
-      h += `</ul>`;
+      if (qs.length) h += `</ul>`;
+      else if (S.addingQ !== a.id) h += `<p class="empty">아직 문항이 없어요.</p>`;
       if (S.addingQ === a.id) h += qFormHTML(a.id);
       const ck = "app:" + a.id;
-      h += `<div class="app-foot"><button class="btn ghost sm" data-act="addQ" data-id="${a.id}">+ 문항</button>
-        <button class="btn ghost sm danger" data-act="delApp" data-id="${a.id}">${S.confirm === ck ? "한 번 더 누르면 삭제" : "지원서 삭제"}</button></div></div>`;
+      h += `<div class="app-foot"><button class="btn ghost sm" data-act="addQ" data-id="${a.id}">${icon("plus")}문항</button>
+        <button class="btn ghost sm danger" data-act="delApp" data-id="${a.id}">${S.confirm === ck ? "한 번 더 누르면 삭제" : "지원서 삭제"}</button></div></section>`;
     }
     return h + `</div>`;
   }
@@ -175,11 +183,11 @@
     const a = S.db.apps[q.appId] || {};
     const n = versOf(q.id).length;
     return `<div class="qv">
-      <button class="back" data-act="toList" title="목록으로"><span>← ${esc(a.company)}${a.role ? " · " + esc(a.role) : ""}</span></button>
+      <button class="back" data-act="toList" title="목록으로">${icon("back")}<span>${esc(a.company)}${a.role ? " · " + esc(a.role) : ""}</span></button>
       <textarea class="q-title" id="qTitle" rows="2" maxlength="500" aria-label="문항">${esc(q.title)}</textarea>
       <div class="q-meta">
-        <label>제한 <input id="qLimit" type="number" min="0" step="50" value="${q.limit}"></label>
-        <label>기준 <select id="qMode">${Object.entries(MODES).map(([k, v]) => `<option value="${k}" ${q.mode === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label class="field">제한 <input id="qLimit" type="number" min="0" step="50" value="${q.limit}"></label>
+        <label class="field">기준 <select id="qMode">${Object.entries(MODES).map(([k, v]) => `<option value="${k}" ${q.mode === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
         <button class="btn ghost sm danger" data-act="delQ" id="delQBtn">문항 삭제</button>
       </div>
       <div class="tabs" role="tablist">
@@ -204,11 +212,11 @@
     if (S.tab === "write") {
       if (!$("#draft")) {
         pane.innerHTML = `<div class="sheet">
-          <textarea class="draft" id="draft" data-keep="no" placeholder="직접 쓰거나, ChatGPT·Claude 답변을 저장하면 여기에 들어와요. 쓰는 내용은 초안으로 자동 저장돼요." spellcheck="false"></textarea>
+          <textarea class="draft" id="draft" data-keep="no" placeholder="직접 쓰거나, ChatGPT·Claude 답변을 저장하면 여기에 들어와요. 쓰는 내용은 자동으로 저장돼요." spellcheck="false"></textarea>
           <div class="meter"><div class="bar-g" id="barG"><i></i></div><div class="counts"><span class="main" id="cMain"></span><span class="sub" id="cSub"></span></div></div></div>
           <div class="state" id="state"><i></i><span></span></div>
           <div class="commit"><input id="commitMsg" maxlength="120" placeholder="무엇을 바꿨나요? (예: 두괄식으로 수정)">
-            <button class="btn primary" data-act="commit">버전 저장</button><button class="btn" data-act="copyDraft">복사</button></div>`;
+            <button class="btn primary" data-act="commit" title="Ctrl/⌘+S">버전 저장</button><button class="btn" data-act="copyDraft">복사</button></div>`;
         $("#draft").value = draftOf(q);
       } else {
         const ta = $("#draft");
@@ -239,41 +247,43 @@
     const vs = versOf(q.id), last = vs[vs.length - 1], st = $("#state");
     if (!last) { st.className = "state dirty"; st.lastElementChild.textContent = "아직 저장된 버전이 없어요"; }
     else if (last.text === text) { st.className = "state"; st.lastElementChild.textContent = `v${vs.length}과 같아요`; }
-    else { st.className = "state dirty"; st.lastElementChild.textContent = `v${vs.length} 이후 고친 내용이 있어요 · 초안은 자동 저장돼요`; }
+    else { st.className = "state dirty"; st.lastElementChild.textContent = `v${vs.length} 이후 고친 내용이 있어요 · 버전으로 저장하면 v${vs.length + 1}이 돼요`; }
   }
 
   function versHTML(q) {
     const vs = versOf(q.id);
-    if (!vs.length) return `<p class="hint">아직 버전이 없어요. <b>작성</b> 탭에서 버전을 저장하거나, ChatGPT·Claude 답변 위의 <b>자소서에 저장</b>을 누르면 여기에 v1부터 쌓여요.</p>`;
+    if (!vs.length) return `<div class="empty-state"><b>아직 버전이 없어요</b><p><b>작성</b> 탭에서 버전을 저장하거나, ChatGPT·Claude 답변 위의 <b>자소서에 저장</b>을 누르면 v1부터 쌓여요.</p></div>`;
     S.cmp = S.cmp.filter((id) => S.db.vers[id] && S.db.vers[id].qid === q.id);
-    let h = `<div class="hist-top"><span>두 버전을 체크하면 비교할 수 있어요</span>
-      <button class="btn sm" data-act="cmpRun" ${S.cmp.length === 2 ? "" : "disabled"}>${S.cmp.length === 2 ? `v${vno(q.id, S.cmp[0])} ↔ v${vno(q.id, S.cmp[1])} 비교` : "선택한 버전 비교"}</button></div><ul class="vers">`;
+    const draft = draftOf(q);
+    let h = `<div class="hist-top"><span>${S.cmp.length === 2 ? "선택한 두 버전을 비교해요" : `비교할 버전 두 개를 체크하세요 <span class="num">${S.cmp.length}/2</span>`}</span>
+      <button class="btn sm ${S.cmp.length === 2 ? "primary" : ""}" data-act="cmpRun" ${S.cmp.length === 2 ? "" : "disabled"}>${S.cmp.length === 2 ? `v${vno(q.id, S.cmp[0])} ↔ v${vno(q.id, S.cmp[1])} 비교` : "비교"}</button></div><ul class="vers">`;
     for (let i = vs.length - 1; i >= 0; i--) {
       const v = vs[i], prev = vs[i - 1], c = countIn(v.text, q.mode);
       const delta = prev ? c - countIn(prev.text, q.mode) : null;
-      const ck = "v:" + v.id;
-      h += `<li class="ver ${v.final ? "final" : ""}"><span class="dot"></span>
-        <div class="ver-top"><span class="vno">v${i + 1}</span><span class="chip ${v.source}">${SOURCES[v.source] || v.source}</span>${v.final ? '<span class="chip final">최종본</span>' : ""}
-          <label class="cmpbox"><input type="checkbox" data-cmp="${v.id}" ${S.cmp.includes(v.id) ? "checked" : ""}>비교</label></div>
+      const ck = "v:" + v.id, lk = "load:" + v.id, same = v.text === draft;
+      h += `<li class="ver ${v.final ? "final" : ""} ${S.cmp.includes(v.id) ? "picked" : ""}"><span class="dot"></span><div class="ver-card">
+        <div class="ver-top"><span class="vno">v${i + 1}</span><span class="chip ${v.source}">${SOURCES[v.source] || v.source}</span>${v.final ? `<span class="chip final">${icon("star")}최종본</span>` : ""}${same ? '<span class="chip cur">작성 중</span>' : ""}
+          <label class="cmpbox" title="비교할 버전으로 선택"><input type="checkbox" data-cmp="${v.id}" ${S.cmp.includes(v.id) ? "checked" : ""}>비교</label></div>
         <div class="ver-msg">${esc(v.message)}</div>
-        <div class="ver-meta">${when(v.createdAt)} · ${fmt(c)}${unit(q.mode)}${delta !== null ? ` · <span class="${delta >= 0 ? "p" : "m"}">${delta >= 0 ? "+" : "−"}${fmt(Math.abs(delta))}</span>` : ""}</div>
+        <div class="ver-meta"><span>${when(v.createdAt)}</span><span>${fmt(c)}${unit(q.mode)}</span>${delta !== null ? `<span class="${delta >= 0 ? "p" : "m"}">${delta >= 0 ? "+" : "−"}${fmt(Math.abs(delta))}</span>` : ""}</div>
+        ${S.openVer === v.id ? `<div class="ver-body">${esc(v.text)}</div>` : ""}
         <div class="ver-act">
+          ${same ? "" : `<button class="btn ghost sm accent" data-act="verLoad" data-id="${v.id}" title="이 버전 내용을 작성 탭으로 가져와 이어서 고쳐요. 다른 버전은 그대로 남아요.">${S.confirm === lk ? "한 번 더 누르면 덮어써요" : "이 버전으로 이어 쓰기"}</button>
+          <button class="btn ghost sm" data-act="verDiff" data-id="${v.id}" title="이 버전과 작성 탭의 글을 비교해요">지금 글과 비교</button>`}
           <button class="btn ghost sm" data-act="verOpen" data-id="${v.id}">${S.openVer === v.id ? "접기" : "보기"}</button>
-          <button class="btn ghost sm" data-act="verDiff" data-id="${v.id}">초안과 비교</button>
-          <button class="btn ghost sm" data-act="verLoad" data-id="${v.id}">초안으로</button>
-          <button class="btn ghost sm" data-act="verFinal" data-id="${v.id}">${v.final ? "최종본 해제" : "최종본"}</button>
-          ${v.url ? `<a class="btn ghost sm" href="${esc(v.url)}" target="_blank" rel="noopener">대화 열기</a>` : ""}
-          <button class="btn ghost sm danger" data-act="verDel" data-id="${v.id}">${S.confirm === ck ? "한 번 더 누르면 삭제" : "삭제"}</button>
-        </div>
-        ${S.openVer === v.id ? `<div class="ver-body">${esc(v.text)}</div>` : ""}</li>`;
+          <span class="sp"></span>
+          <button class="btn ghost sm ico ${v.final ? "on" : ""}" data-act="verFinal" data-id="${v.id}" title="${v.final ? "최종본 표시 해제" : "제출할 최종본으로 표시"}" aria-label="${v.final ? "최종본 해제" : "최종본으로 표시"}" aria-pressed="${Boolean(v.final)}">${icon("star")}</button>
+          ${v.url ? `<a class="btn ghost sm ico" href="${esc(v.url)}" target="_blank" rel="noopener" title="이 답변이 나온 대화 열기" aria-label="대화 열기">${icon("link")}</a>` : ""}
+          <button class="btn ghost sm ico danger" data-act="verDel" data-id="${v.id}" title="버전 삭제" aria-label="버전 삭제">${S.confirm === ck ? "한 번 더 누르면 삭제" : icon("trash")}</button>
+        </div></div></li>`;
     }
-    return h + "</ul>";
+    return h + `</ul><p class="hint foot">버전은 지워지지 않고 쌓여요. <b>이어 쓰기</b>로 예전 버전을 작성 탭에 가져와 고친 뒤 저장하면 새 버전이 돼요.</p>`;
   }
 
   function askHTML(q) {
     const a = S.db.apps[q.appId] || {};
     const t = S.target;
-    const targetTxt = t ? `${SOURCES[t.source]} 탭에 넣어요 · ${esc(t.title || "")}` : "ChatGPT나 Claude 탭이 열려 있지 않아요. 넣기를 누르면 복사만 돼요.";
+    const targetTxt = t ? `${SOURCES[t.source]} 탭에 넣어요 · ${esc(t.title || "")}` : "열린 ChatGPT·Claude 탭이 없어요. 요청문을 복사해서 붙여넣으세요.";
     return `<div class="ask">
       <div class="target ${t ? t.source : ""}"><i></i><span>${targetTxt}</span></div>
       <details class="jd" id="jdBox" ${a.jd ? "" : "open"}><summary>회사·공고 메모<small>이 지원서의 모든 문항에 함께 들어가요</small></summary>
@@ -297,7 +307,7 @@
       const a = S.db.apps[q.appId] || {};
       versOf(qid).forEach((v, i) => { if (v.text.toLowerCase().includes(term)) hits.push({ qid, vid: v.id, label: `v${i + 1}`, src: v.source, text: v.text, a, q, ts: v.createdAt }); });
       const d = draftOf({ id: qid, ...q });
-      if (d.toLowerCase().includes(term) && !versOf(qid).some((v) => v.text === d)) hits.push({ qid, label: "초안", text: d, a, q, ts: q.updatedAt });
+      if (d.toLowerCase().includes(term) && !versOf(qid).some((v) => v.text === d)) hits.push({ qid, label: "작성 중", text: d, a, q, ts: q.updatedAt });
     }
     hits.sort((x, y) => y.ts - x.ts);
     const snip = (t) => {
@@ -305,7 +315,7 @@
       const part = t.slice(s, e), k = part.toLowerCase().indexOf(term);
       return (s ? "…" : "") + esc(part.slice(0, k)) + "<mark>" + esc(part.slice(k, k + term.length)) + "</mark>" + esc(part.slice(k + term.length)) + (e < t.length ? "…" : "");
     };
-    return `<div class="results"><div class="hist-top"><span>“${esc(S.search.trim())}” ${hits.length}건</span><button class="btn ghost sm" data-act="clearSearch">검색 닫기</button></div>
+    return `<div class="results"><div class="hist-top"><span>“${esc(S.search.trim())}” ${hits.length}건</span><button class="btn ghost sm" data-act="clearSearch">닫기</button></div>
       ${hits.map((h) => `<button class="res" data-act="goHit" data-q="${h.qid}" data-v="${h.vid || ""}">
         <span class="rh"><b>${esc(h.a.company || "")}</b><span>${esc(h.q.title.slice(0, 30))}${h.q.title.length > 30 ? "…" : ""}</span><span class="chip ${h.src || "me"}">${h.label}${h.src ? " · " + SOURCES[h.src] : ""}</span></span>
         <span class="rs">${snip(h.text)}</span></button>`).join("") || '<p class="hint">일치하는 답변이 없어요.</p>'}</div>`;
@@ -318,7 +328,7 @@
     if (!qid || S.pending[qid] === undefined) return;
     const v = S.pending[qid];
     await draftWrite;
-    draftWrite = op("updateQ", { id: qid, patch: { draft: v } }).catch(() => toast("초안을 저장하지 못했어요."));
+    draftWrite = op("updateQ", { id: qid, patch: { draft: v } }).catch(() => toast("작성 중인 글을 저장하지 못했어요."));
     await draftWrite;
     if (S.pending[qid] === v) delete S.pending[qid];
   }
@@ -354,7 +364,7 @@
     const q = cur();
     const extra = ($("#extra")?.value || "").trim();
     if (S.action === "custom" && !extra) { toast("어떻게 고칠지 요청을 적어주세요."); return false; }
-    if (S.action !== "custom" && !draftOf(q).trim()) { toast("작성 탭에 답변 초안이 있어야 해요. 없으면 ‘직접’으로 새로 써달라고 해보세요."); return false; }
+    if (S.action !== "custom" && !draftOf(q).trim()) { toast("작성 탭에 글이 있어야 해요. 없으면 ‘직접’으로 새로 써달라고 해보세요."); return false; }
     return true;
   }
   async function insertPrompt() {
@@ -395,7 +405,7 @@
     if (!b || b.disabled) return;
     const act = b.dataset.act, id = b.dataset.id, q = cur();
     switch (act) {
-      case "menu": $("#menu").hidden = !$("#menu").hidden; break;
+      case "menu": $("#menu").hidden = !$("#menu").hidden; b.setAttribute("aria-expanded", String(!$("#menu").hidden)); break;
       case "export": exportBackup(); break;
       case "doImport": {
         if (!S.importData) return;
@@ -444,8 +454,17 @@
       }
       case "copyDraft": copy($("#draft").value, "답변을 복사했어요"); break;
       case "verOpen": S.openVer = S.openVer === id ? null : id; renderPane(); break;
-      case "verDiff": openDiff(S.db.vers[id].text, draftOf(q), `v${vno(q.id, id)}`, "지금 초안"); break;
-      case "verLoad": setDraft(S.db.vers[id].text); toast(`v${vno(q.id, id)}을 초안으로 불러왔어요`); break;
+      case "verDiff": openDiff(S.db.vers[id].text, draftOf(q), `v${vno(q.id, id)}`, "작성 중인 글"); break;
+      case "verLoad": {
+        const draft = draftOf(q), vs = versOf(q.id);
+        // 버전으로 남기지 않은 글을 덮어쓸 때만 한 번 더 확인
+        if (draft.trim() && !vs.some((v) => v.text === draft) && S.confirm !== "load:" + id) return arm("load:" + id);
+        S.confirm = null;
+        setDraft(S.db.vers[id].text);
+        S.tab = "write"; syncHead(q); $("#pane").innerHTML = ""; renderPane();
+        toast(`v${vno(q.id, id)} 내용을 작성 탭으로 가져왔어요. 고친 뒤 저장하면 v${vs.length + 1}이 돼요`);
+        break;
+      }
       case "verFinal": await mutate("setFinal", { id, on: !S.db.vers[id].final }); renderPane(); break;
       case "verDel":
         if (S.confirm !== "v:" + id) return arm("v:" + id);
@@ -545,7 +564,7 @@
         S.importData = data;
         $("#importConfirm").innerHTML = `<p class="hint">지원서 ${Object.keys(data.apps).length}개 · 문항 ${Object.keys(data.qs).length}개 · 버전 ${Object.keys(data.vers).length}개. 지금 데이터는 사라져요.</p>
           <button class="btn danger" data-act="doImport">지금 데이터를 이 백업으로 바꾸기</button>`;
-      } catch { toast("Draftlog 백업 파일이 아니에요."); }
+      } catch { toast("Draft Log 백업 파일이 아니에요."); }
     };
     r.readAsText(file);
   }
