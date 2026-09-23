@@ -93,8 +93,57 @@ try {
   assert.ok(await panel.locator("#diffBody ins").count(), "비교 화면에 추가 표시가 있어야 한다");
   if (shots) await panel.screenshot({ path: path.join(here, "diff.png") });
 
+  await panel.keyboard.press("Escape");
+
+  // 7) PC 폴더 자동 저장 — 폴더 선택 창은 자동화할 수 없어서 OPFS 폴더를 대신 넘긴다
+  const fileState = () => sw.evaluate(async () => (await chrome.storage.local.get("fileSync")).fileSync);
+  const readDir = () => panel.evaluate(async () => {
+    const dir = await navigator.storage.getDirectory();
+    const main = JSON.parse(await (await (await dir.getFileHandle("draftlog.json")).getFile()).text());
+    const names = [];
+    for await (const [n] of (await dir.getDirectoryHandle("backups")).entries()) names.push(n);
+    return { main, backups: names.sort() };
+  });
+  await panel.evaluate(async () => {
+    await DLFile.setDir(await navigator.storage.getDirectory());
+    await chrome.runtime.sendMessage({ type: "dl:file", act: "connect" });
+  });
+  assert.equal((await fileState()).state, "ok");
+  let disk = await readDir();
+  assert.equal(Object.keys(disk.main.vers).length, 2, "연결하면 지금 데이터가 폴더에 저장돼야 한다");
+  assert.ok(disk.backups.some((n) => /^draftlog-\d{8}\.json$/.test(n)), "오늘 스냅샷이 있어야 한다");
+
+  await panel.click('.tabs [data-id="write"]');
+  await panel.fill("#draft", "세 번째 버전입니다. 폴더에도 저장돼야 합니다.");
+  await panel.click('[data-act="commit"]');
+  await panel.waitForTimeout(2500);
+  disk = await readDir();
+  assert.equal(Object.keys(disk.main.vers).length, 3, "버전을 저장하면 폴더 파일도 갱신돼야 한다");
+
+  // 다른 PC에서 더 최근에 쓴 파일이 있으면 덮어쓰지 않고 물어본다
+  await panel.evaluate(async () => {
+    const dir = await navigator.storage.getDirectory();
+    const w = await (await dir.getFileHandle("draftlog.json")).createWritable();
+    await w.write(JSON.stringify({ app: "draftlog", updatedAt: Date.now() + 60000,
+      apps: { x: { company: "다른PC전자", role: "", deadline: "", createdAt: 1 } }, qs: {}, vers: {} }));
+    await w.close();
+  });
+  await panel.fill("#draft", "네 번째 버전입니다.");
+  await panel.click('[data-act="commit"]');
+  await panel.waitForTimeout(2500);
+  assert.equal((await fileState()).state, "conflict", "폴더 파일이 더 최신이면 conflict");
+  assert.ok(await panel.locator("#fileBar").isVisible(), "충돌 안내가 보여야 한다");
+  if (shots) await panel.screenshot({ path: path.join(here, "file-conflict.png") });
+  await panel.click('[data-act="fileAdopt"]');
+  await panel.waitForTimeout(500);
+  const after = await sw.evaluate(async () => (await chrome.storage.local.get("db")).db);
+  assert.deepEqual(Object.values(after.apps).map((a) => a.company), ["다른PC전자"], "폴더 데이터를 불러와야 한다");
+  disk = await readDir();
+  assert.ok(disk.backups.some((n) => n.startsWith("before-load-")), "불러오기 전 데이터가 backups에 남아야 한다");
+  assert.equal((await fileState()).state, "ok");
+
   assert.deepEqual(errors, []);
-  console.log("E2E 통과: 지원서·문항 생성, 답변 저장, 선택 저장, 입력창 넣기, 비교");
+  console.log("E2E 통과: 지원서·문항 생성, 답변 저장, 선택 저장, 입력창 넣기, 비교, PC 폴더 자동 저장");
 } finally {
   await ctx.close();
   fs.rmSync(path.join(here, fs.readdirSync(here).find((f) => f.startsWith(".profile-")) || "__none__"), { recursive: true, force: true });

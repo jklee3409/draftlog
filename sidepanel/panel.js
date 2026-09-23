@@ -17,6 +17,8 @@
     openVer: null, cmp: [], action: "feedback",
     target: null,          // {tabId, source, title}
     edQ: null, lastVerCount: null, importData: null,
+    file: null,            // PC 폴더 자동 저장 상태 (background가 storage의 fileSync에 기록)
+    nudgeOff: false,
   };
 
   /* ---------- 저장소 ---------- */
@@ -30,7 +32,9 @@
     });
   }
   async function reload() {
-    const { db, activeQ } = await chrome.storage.local.get(["db", "activeQ"]);
+    const { db, activeQ, fileSync, fileNudgeOff } = await chrome.storage.local.get(["db", "activeQ", "fileSync", "fileNudgeOff"]);
+    S.file = fileSync || null;
+    S.nudgeOff = Boolean(fileNudgeOff);
     S.db = db && db.apps ? db : { apps: {}, qs: {}, vers: {} };
     for (const id in S.pending) if (S.db.qs[id]) S.db.qs[id] = { ...S.db.qs[id], draft: S.pending[id] };
     if (activeQ && S.db.qs[activeQ]) S.active = activeQ;
@@ -147,6 +151,8 @@
     }
     let h = `<div class="list"><div class="list-head"><h2>지원서 <span class="num">${apps.length}</span></h2><button class="btn sm" data-act="addApp">${icon("plus")}지원서</button></div>`;
     if (S.addingApp) h += appFormHTML();
+    if (!(S.file && S.file.on) && !S.nudgeOff) h += `<div class="nudge">${icon("folder")}<div><b>지금은 이 브라우저에만 저장돼요</b><span>확장을 지우면 함께 사라져요. PC 폴더에 자동 저장을 켜두세요.</span></div>
+      <button class="btn sm primary" data-act="filePick">켜기</button><button class="icon-btn sm" data-act="nudgeOff" aria-label="안내 닫기" title="닫기">${icon("close")}</button></div>`;
     for (const a of apps) {
       const d = dday(a.deadline), qs = qsOf(a.id);
       h += `<section class="app"><div class="app-head"><div class="app-name"><strong>${esc(a.company)}</strong><span class="role">${esc(a.role || "직무 미입력")}${a.deadline ? ` · ${a.deadline.slice(5).replace("-", "/")} 마감` : ""}</span></div>
@@ -381,6 +387,70 @@
     }
   }
 
+  /* ---------- PC 폴더 자동 저장 ---------- */
+  function fileAct(act) {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: "dl:file", act }, (r) => {
+        if (chrome.runtime.lastError || !r || !r.ok) { toast((r && r.error) || "PC 폴더 저장을 처리하지 못했어요."); return resolve(null); }
+        resolve(r.result);
+      });
+    });
+  }
+  async function pickFolder() {
+    if (!window.showDirectoryPicker) return toast("이 브라우저는 폴더 저장을 지원하지 않아요. 백업 파일 내보내기를 써주세요.");
+    let dir;
+    try {
+      dir = await showDirectoryPicker({ id: "draftlog", mode: "readwrite", startIn: "documents" });
+    } catch (e) {
+      if (e && e.name === "AbortError") return;
+      // 사이드 패널에서 폴더 선택 창을 못 여는 환경이면 같은 화면을 탭으로 연다
+      chrome.tabs.create({ url: chrome.runtime.getURL("sidepanel/index.html#folder") });
+      return toast("새 탭에서 폴더를 골라주세요.");
+    }
+    await DLFile.setDir(dir);
+    const st = await fileAct("connect");
+    if (st && st.state === "ok") toast(`‘${dir.name}’ 폴더에 저장했어요. 이제 바뀔 때마다 자동으로 저장돼요.`);
+  }
+  async function regrant() {
+    const dir = await DLFile.getDir();
+    if (!dir) return pickFolder();
+    try {
+      if ((await DLFile.permission(dir, true)) !== "granted") return toast("폴더 접근을 허용해야 저장할 수 있어요.");
+    } catch { return pickFolder(); }
+    const st = await fileAct("sync");
+    if (st && st.state === "ok") toast("PC 폴더 저장을 다시 시작했어요.");
+  }
+  function renderFile() {
+    const f = S.file || {}, on = Boolean(f.on);
+    const dot = $("#syncDot");
+    dot.hidden = !on;
+    dot.className = "sync-dot" + (f.state === "ok" ? "" : " warn");
+    const stateTxt = { ok: f.at ? `${when(f.at)} 저장됨` : "저장됨", permission: "접근 허용 필요", conflict: "확인 필요", error: "저장 실패" }[f.state] || "";
+    $("#fileBox").innerHTML = on
+      ? `<div class="fstat ${esc(f.state)}">${icon("folder")}<b>${esc(f.name || "선택한 폴더")}</b><span>${stateTxt}</span></div>
+        <p class="hint">바뀔 때마다 <b>draftlog.json</b>에 최신본을, <b>backups/</b>에 최근 ${DLFile.KEEP_DAYS}일 스냅샷을 저장해요.</p>
+        <div class="menu-acts"><button class="btn sm" data-act="fileNow">지금 저장</button><button class="btn sm" data-act="filePick">폴더 바꾸기</button><button class="btn sm ghost danger" data-act="fileOff">끄기</button></div>`
+      : `<p class="hint">확장을 지우면 브라우저 데이터도 지워져요. PC 폴더를 정해두면 바뀔 때마다 JSON 파일로 저장돼요. OneDrive·구글 드라이브 폴더를 고르면 클라우드에도 남아요.</p>
+        <div class="menu-acts"><button class="btn primary" data-act="filePick">${icon("folder")}폴더 선택해서 켜기</button></div>`;
+    let h = "";
+    if (on && f.state === "permission") {
+      h = `<span>PC 폴더 저장이 멈췄어요. 브라우저를 다시 켜면 폴더 접근을 한 번 더 허용해야 해요.</span><div class="fb-acts"><button class="btn sm primary" data-act="fileGrant">다시 허용</button></div>`;
+    } else if (on && f.state === "conflict" && f.file && f.file.broken) {
+      h = `<span><b>폴더의 draftlog.json을 읽을 수 없어요.</b> 지금 데이터로 덮어쓰면 다시 저장돼요.</span><div class="fb-acts"><button class="btn sm primary" data-act="fileOverwrite">지금 데이터로 덮어쓰기</button></div>`;
+    } else if (on && f.state === "conflict" && f.file) {
+      const empty = !Object.keys(S.db.apps).length;
+      h = `<span><b>폴더에 다른 데이터가 있어요</b> · 지원서 ${f.file.apps}개 · 버전 ${f.file.vers}개 · ${when(f.file.updatedAt)} 저장</span>
+        <div class="fb-acts"><button class="btn sm ${empty ? "primary" : ""}" data-act="fileAdopt">폴더 데이터 불러오기</button><button class="btn sm ${empty ? "" : "primary"}" data-act="fileOverwrite">지금 데이터로 덮어쓰기</button></div>
+        <small>어느 쪽을 골라도 다른 쪽은 backups 폴더에 따로 남아요.</small>`;
+    } else if (on && f.state === "error") {
+      h = `<span>PC 폴더에 저장하지 못했어요. ${esc(f.error)}</span><div class="fb-acts"><button class="btn sm" data-act="fileNow">다시 시도</button></div>`;
+    }
+    const bar = $("#fileBar");
+    bar.className = "filebar " + (f.state || "");
+    bar.innerHTML = h;
+    bar.hidden = !h;
+  }
+
   /* ---------- 확인이 필요한 삭제 ---------- */
   function arm(key) {
     S.confirm = key;
@@ -407,6 +477,23 @@
     switch (act) {
       case "menu": $("#menu").hidden = !$("#menu").hidden; b.setAttribute("aria-expanded", String(!$("#menu").hidden)); break;
       case "export": exportBackup(); break;
+      case "filePick": pickFolder(); break;
+      case "fileGrant": regrant(); break;
+      case "fileNow": { const st = await fileAct("sync"); if (st && st.state === "ok") toast("PC 폴더에 저장했어요"); break; }
+      case "fileOff": {
+        if (S.confirm !== "fileOff") { S.confirm = "fileOff"; b.textContent = "한 번 더 누르면 꺼요"; setTimeout(() => { if (S.confirm === "fileOff") { S.confirm = null; renderFile(); } }, 3000); return; }
+        S.confirm = null;
+        if (await fileAct("off")) toast("PC 폴더 저장을 껐어요. 폴더의 파일은 그대로 있어요.");
+        break;
+      }
+      case "fileOverwrite": { const st = await fileAct("overwrite"); if (st && st.state === "ok") toast("폴더를 지금 데이터로 저장했어요. 이전 파일은 backups에 있어요."); break; }
+      case "fileAdopt": {
+        S.pending = {};
+        const st = await fileAct("adopt");
+        if (st && st.state === "ok") { toast("폴더 데이터를 불러왔어요. 이전 데이터는 backups에 있어요."); S.view = "list"; render(); }
+        break;
+      }
+      case "nudgeOff": S.nudgeOff = true; chrome.storage.local.set({ fileNudgeOff: true }); render(); break;
       case "doImport": {
         if (!S.importData) return;
         if (S.confirm !== "import") { S.confirm = "import"; b.textContent = "한 번 더 누르면 덮어써요"; setTimeout(() => { if (S.confirm === "import") { S.confirm = null; b.textContent = "지금 데이터를 이 백업으로 바꾸기"; } }, 3000); return; }
@@ -572,6 +659,11 @@
   /* ---------- 외부 변경(채팅 페이지에서 저장 등) ---------- */
   chrome.storage.onChanged.addListener(async (changes, area) => {
     if (area !== "local") return;
+    if (changes.fileSync) {
+      S.file = changes.fileSync.newValue || null;
+      renderFile();
+      if (S.view === "list" && !changes.db) render();
+    }
     if (!changes.db && !changes.activeQ) return;
     const before = S.active ? versOf(S.active).length : null;
     await reload();
@@ -594,6 +686,8 @@
     await reload();
     if (S.active) { S.view = "q"; S.lastVerCount = versOf(S.active).length; }
     render();
+    renderFile();
     findTarget();
+    if (location.hash === "#folder") { $("#menu").hidden = false; $("#menuBtn").setAttribute("aria-expanded", "true"); }
   })();
 })();
