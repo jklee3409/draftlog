@@ -1,6 +1,7 @@
 /*
  * ChatGPT·Claude 페이지에 붙는 부분.
- * - 답변에 마우스를 올리면 "자소서에 저장" 버튼과 저장 카드
+ * - 답변에 마우스를 올리면 "자소서에 저장" 버튼
+ * - 텍스트를 드래그하면 "선택 영역 저장" 버튼 (사이트 구조가 바뀌어도 동작하는 대비책)
  * 페이지 DOM(React)은 건드리지 않고, body 끝에 붙인 shadow DOM 하나에만 그린다.
  */
 (function () {
@@ -60,6 +61,7 @@
   root.adoptedStyleSheets = [sheet];
   root.innerHTML = `
     <button class="pill" id="hoverPill" hidden><span class="mark">자</span>자소서에 저장</button>
+    <button class="pill" id="selPill" hidden><span class="mark">자</span>선택 영역 저장</button>
     <div class="card" id="card" role="dialog" aria-label="자소서 버전으로 저장" hidden></div>
     <div class="toast" id="toast" role="status" hidden></div>`;
   const $ = (id) => root.getElementById(id);
@@ -118,7 +120,7 @@
       hideT = setTimeout(hideHover, 500);
     }
   }, true);
-  addEventListener("scroll", () => { if (hoverMsg) requestAnimationFrame(placeHover); }, true);
+  addEventListener("scroll", () => { if (hoverMsg) requestAnimationFrame(placeHover); if (!selPill.hidden) hideSel(); }, true);
   addEventListener("resize", () => hoverMsg && placeHover());
   hoverPill.addEventListener("mousedown", (e) => e.preventDefault());
   hoverPill.addEventListener("click", () => {
@@ -127,6 +129,34 @@
     hideHover();
     if (!text) return toast("답변 내용을 읽지 못했어요. 드래그해서 선택한 뒤 저장해 보세요.");
     openCard(text, `${SITE_NAME} 답변`);
+  });
+
+  /* ---------- 선택 영역 버튼 ---------- */
+  const selPill = $("selPill");
+  let selText = "";
+  function hideSel() { selPill.hidden = true; }
+  function checkSelection() {
+    const sel = getSelection();
+    const text = sel ? sel.toString() : "";
+    if (!sel || sel.isCollapsed || text.trim().length < 5 || !$("card").hidden) return hideSel();
+    const node = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
+    if (node && node.closest && node.closest('[contenteditable="true"], textarea, input')) return hideSel();
+    selText = text;
+    const rects = sel.getRangeAt(0).getClientRects();
+    const r = rects[rects.length - 1] || sel.getRangeAt(0).getBoundingClientRect();
+    selPill.hidden = false;
+    const w = selPill.offsetWidth || 120;
+    selPill.style.top = Math.min(r.bottom + 8, innerHeight - 40) + "px";
+    selPill.style.left = Math.min(Math.max(r.right - w, 8), innerWidth - w - 8) + "px";
+  }
+  document.addEventListener("mouseup", (e) => { if (!e.composedPath().includes(host)) setTimeout(checkSelection, 10); }, true);
+  document.addEventListener("keyup", (e) => { if (e.shiftKey) setTimeout(checkSelection, 10); }, true);
+  document.addEventListener("selectionchange", () => { const s = getSelection(); if (!s || s.isCollapsed) hideSel(); });
+  selPill.addEventListener("mousedown", (e) => e.preventDefault());
+  selPill.addEventListener("click", () => {
+    const text = DL.cleanText(selText);
+    hideSel();
+    if (text) openCard(text, `${SITE_NAME} 답변 일부`);
   });
 
   /* ---------- 저장 카드 ---------- */
@@ -217,6 +247,17 @@
       closeCard();
       chrome.storage.local.set({ activeQ: qid });
       toast(r.result.dup ? `마지막 버전(v${r.result.n})과 같아서 새로 만들지 않았어요.` : `“${title.slice(0, 18)}${title.length > 18 ? "…" : ""}”에 v${r.result.n}로 저장했어요`);
+    }
+  });
+
+  /* ---------- 우클릭 메뉴 ---------- */
+  chrome.runtime.onMessage.addListener((msg, _sender, send) => {
+    if (!msg || typeof msg !== "object") return;
+    if (msg.type === "dl:openSave") {
+      const sel = getSelection();
+      const text = DL.cleanText((sel && sel.toString()) || msg.fallbackText || "");
+      if (text) openCard(text, `${SITE_NAME} 답변 일부`);
+      send({ ok: Boolean(text) });
     }
   });
 })();
