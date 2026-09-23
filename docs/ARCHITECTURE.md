@@ -1,4 +1,4 @@
-# Draftlog 설계
+# Draft Log 설계
 
 ## 구성
 
