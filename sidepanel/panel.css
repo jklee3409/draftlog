@@ -78,6 +78,28 @@ a { color: var(--accent); }
 .hint b { color: var(--ink-2); font-weight: 600; }
 main { padding: 0 0 40px; }
 
+/* PC 폴더 자동 저장 */
+.icon-btn { position: relative; }
+.icon-btn.sm { width: 26px; height: 26px; }
+.icon-btn.sm svg, .icon-btn .ic { width: 14px; height: 14px; }
+.sync-dot { position: absolute; right: 5px; top: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }
+.sync-dot.warn { background: var(--warn); }
+.fstat { display: flex; align-items: center; gap: 7px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); font-size: 12.5px; min-width: 0; }
+.fstat .ic { color: var(--accent); }
+.fstat b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fstat span { margin-left: auto; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.fstat:not(.ok) .ic, .fstat:not(.ok) span { color: var(--warn); }
+.menu .menu-title:not(:first-child) { margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.filebar { display: grid; gap: 8px; padding: 10px 12px; font-size: 12.5px; background: var(--gold-soft); border-bottom: 1px solid color-mix(in srgb, var(--gold) 35%, var(--line)); }
+.filebar.error { background: var(--del-bg); border-bottom-color: color-mix(in srgb, var(--over) 30%, var(--line)); }
+.filebar small { color: var(--muted); font-size: 11.5px; }
+.fb-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.nudge { display: flex; align-items: center; gap: 10px; padding: 10px 8px 10px 12px; border: 1px solid var(--accent-line); border-radius: var(--r); background: var(--accent-soft); font-size: 12px; }
+.nudge > .ic { color: var(--accent); width: 18px; height: 18px; }
+.nudge div { flex: 1; min-width: 0; display: grid; }
+.nudge div b { font-size: 12.5px; }
+.nudge div span { color: var(--muted); }
+
 /* list view */
 .list { padding: 14px 12px; display: grid; gap: 10px; }
 .list-head { display: flex; align-items: center; justify-content: space-between; }
