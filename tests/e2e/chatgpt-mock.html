@@ -1,0 +1,11 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>ChatGPT (테스트용 가짜 페이지)</title>
+<style>body{font-family:sans-serif;margin:0;padding:80px 40px 200px;max-width:760px}.msg{padding:16px;margin:16px 0;border-radius:8px;background:#f4f4f4}#prompt-textarea{position:fixed;bottom:20px;left:40px;width:700px;min-height:40px;border:1px solid #999;padding:8px;background:#fff;white-space:pre-wrap}</style></head>
+<body>
+<div data-message-author-role="user" class="msg">지원동기 좀 다듬어줘</div>
+<div data-message-author-role="assistant" class="msg"><div class="markdown"><p>스마트홈 기기 수백만 대를 안정적으로 연결하는 서버를 만들고 싶어 한결전자에 지원했습니다.</p><p>교내 중고거래 플랫폼에서 백엔드를 맡아 검색 쿼리를 1.8초에서 0.2초로 줄였습니다.</p></div></div>
+<div data-message-author-role="assistant" class="msg"><div class="markdown"><p>바꾼 이유: 두괄식으로 바꾸고 수치를 앞에 배치했습니다.</p></div></div>
+<div id="prompt-textarea" class="ProseMirror" contenteditable="true"></div>
+<script>
+const c=document.getElementById('prompt-textarea');
+c.addEventListener('paste',e=>{e.preventDefault();const t=e.clipboardData.getData('text/plain');c.textContent+=t;});
+</script></body></html>
