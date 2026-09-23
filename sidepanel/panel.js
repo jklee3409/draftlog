@@ -16,7 +16,7 @@
     addingApp: false, addingQ: null, confirm: null,
     openVer: null, cmp: [], action: "feedback",
     target: null,          // {tabId, source, title}
-    edQ: null, lastVerCount: null,
+    edQ: null, lastVerCount: null, importData: null,
   };
 
   /* ---------- 저장소 ---------- */
@@ -395,6 +395,17 @@
     if (!b || b.disabled) return;
     const act = b.dataset.act, id = b.dataset.id, q = cur();
     switch (act) {
+      case "menu": $("#menu").hidden = !$("#menu").hidden; break;
+      case "export": exportBackup(); break;
+      case "doImport": {
+        if (!S.importData) return;
+        if (S.confirm !== "import") { S.confirm = "import"; b.textContent = "한 번 더 누르면 덮어써요"; setTimeout(() => { if (S.confirm === "import") { S.confirm = null; b.textContent = "지금 데이터를 이 백업으로 바꾸기"; } }, 3000); return; }
+        S.confirm = null;
+        const r = await mutate("import", { data: S.importData });
+        S.importData = null; $("#importConfirm").innerHTML = ""; $("#menu").hidden = true;
+        if (r) { toast(`불러왔어요: 지원서 ${r.apps}개, 문항 ${r.qs}개, 버전 ${r.vers}개`); S.view = "list"; setActive(null); render(); }
+        break;
+      }
       case "addApp": S.addingApp = true; S.addingQ = null; S.view = "list"; render(); $("#fCompany")?.focus(); break;
       case "cancelApp": S.addingApp = false; render(); break;
       case "addQ": S.addingQ = id; S.addingApp = false; render(); $("#fQTitle")?.focus(); break;
@@ -493,6 +504,7 @@
       S.cmp = t.checked ? [...S.cmp.filter((x) => x !== id), id].slice(-2) : S.cmp.filter((x) => x !== id);
       renderPane(); return;
     }
+    if (t.id === "importFile") return readImport(t);
     if (!q) return;
     if (t.id === "qTitle" && t.value.trim() && t.value.trim() !== q.title) await mutate("updateQ", { id: q.id, patch: { title: t.value } });
     if (t.id === "qLimit") { await mutate("updateQ", { id: q.id, patch: { limit: t.value } }); updateCounter(); }
@@ -508,6 +520,35 @@
     }
   });
   $("#overlay").addEventListener("click", (e) => { if (e.target.id === "overlay") $("#overlay").hidden = true; });
+
+  /* ---------- 백업 ---------- */
+  function exportBackup() {
+    const data = JSON.stringify({ app: "draftlog", exportedAt: new Date().toISOString(), ...S.db }, null, 2);
+    const url = URL.createObjectURL(new Blob([data], { type: "application/json" }));
+    const a = document.createElement("a");
+    const d = new Date();
+    a.href = url;
+    a.download = `draftlog-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast("백업 파일을 내려받았어요");
+  }
+  function readImport(input) {
+    const file = input.files && input.files[0];
+    input.value = "";
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const data = JSON.parse(String(r.result));
+        if (!data.apps || !data.qs || !data.vers) throw new Error();
+        S.importData = data;
+        $("#importConfirm").innerHTML = `<p class="hint">지원서 ${Object.keys(data.apps).length}개 · 문항 ${Object.keys(data.qs).length}개 · 버전 ${Object.keys(data.vers).length}개. 지금 데이터는 사라져요.</p>
+          <button class="btn danger" data-act="doImport">지금 데이터를 이 백업으로 바꾸기</button>`;
+      } catch { toast("Draftlog 백업 파일이 아니에요."); }
+    };
+    r.readAsText(file);
+  }
 
   /* ---------- 외부 변경(채팅 페이지에서 저장 등) ---------- */
   chrome.storage.onChanged.addListener(async (changes, area) => {

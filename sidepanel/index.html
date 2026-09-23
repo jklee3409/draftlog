@@ -10,7 +10,15 @@
   <header class="bar">
     <b class="brand">Draftlog</b>
     <input id="search" type="search" placeholder="모든 버전에서 검색" autocomplete="off" aria-label="모든 버전에서 검색">
+    <button class="btn ghost" data-act="menu" aria-haspopup="true" id="menuBtn">백업</button>
   </header>
+  <div class="menu" id="menu" hidden>
+    <button class="btn" data-act="export">백업 파일 내보내기</button>
+    <label class="btn" for="importFile">백업 파일 불러오기</label>
+    <input id="importFile" type="file" accept="application/json,.json" hidden>
+    <p class="hint">데이터는 이 브라우저에만 저장돼요. 컴퓨터를 바꾸거나 확장을 지우기 전에 백업해 두세요.</p>
+    <div id="importConfirm"></div>
+  </div>
   <main id="main"></main>
 
   <div class="overlay" id="overlay" hidden>

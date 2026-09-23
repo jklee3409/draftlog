@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { apply, emptyDb, versionsOf } from "../lib/store.js";
+import { apply, emptyDb, validate, versionsOf } from "../lib/store.js";
 
 await import("../lib/text.js");
 const DL = globalThis.DL;
@@ -68,4 +68,16 @@ test("store: 지원서 삭제 시 문항·버전도 지운다", () => {
   apply(db, "addVersion", { qid, text: "1" });
   apply(db, "delApp", { id: appId });
   assert.deepEqual([Object.keys(db.apps).length, Object.keys(db.qs).length, Object.keys(db.vers).length], [0, 0, 0]);
+});
+
+test("store: 백업 검사는 끊긴 참조와 위험한 url을 버린다", () => {
+  const out = validate({
+    apps: { a: { company: "A" } },
+    qs: { q: { appId: "a", title: "Q" }, orphan: { appId: "zzz", title: "X" } },
+    vers: { v: { qid: "q", text: "t", url: "javascript:alert(1)" }, w: { qid: "orphan", text: "t" } },
+  });
+  assert.deepEqual(Object.keys(out.qs), ["q"]);
+  assert.deepEqual(Object.keys(out.vers), ["v"]);
+  assert.equal(out.vers.v.url, "");
+  assert.throws(() => validate({ hello: 1 }));
 });
