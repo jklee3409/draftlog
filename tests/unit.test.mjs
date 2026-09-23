@@ -18,6 +18,13 @@ test("diff: 원문과 수정본을 그대로 복원한다", () => {
   assert.equal(ops.filter((o) => o.t !== "del").map((o) => o.s).join(""), b);
 });
 
+test("buildPrompt: 문항·제한·공고·요청이 들어간다", () => {
+  const p = DL.buildPrompt({ action: "fit", company: "한결전자", role: "백엔드", jd: "Kafka 우대", title: "지원동기", limit: 700, mode: "with", draft: "초안입니다", extra: "두괄식" });
+  assert.match(p, /공백 포함 기준 700자 이내 — 현재 5자/);
+  assert.match(p, /Kafka 우대/);
+  assert.match(p, /\[추가 요청\]\n두괄식/);
+});
+
 test("cleanText: 코드펜스·감싼 따옴표를 벗기고 빈 줄을 줄인다", () => {
   assert.equal(DL.cleanText("```\n본문\n\n\n\n둘째\n```"), "본문\n\n둘째");
   assert.equal(DL.cleanText("“본문입니다”"), "본문입니다");
