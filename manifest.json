@@ -33,5 +33,19 @@
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
     "https://claude.ai/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*"
+      ],
+      "js": [
+        "lib/text.js",
+        "content/content.js"
+      ],
+      "run_at": "document_idle"
+    }
   ]
 }

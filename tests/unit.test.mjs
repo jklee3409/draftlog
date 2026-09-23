@@ -18,6 +18,16 @@ test("diff: 원문과 수정본을 그대로 복원한다", () => {
   assert.equal(ops.filter((o) => o.t !== "del").map((o) => o.s).join(""), b);
 });
 
+test("cleanText: 코드펜스·감싼 따옴표를 벗기고 빈 줄을 줄인다", () => {
+  assert.equal(DL.cleanText("```\n본문\n\n\n\n둘째\n```"), "본문\n\n둘째");
+  assert.equal(DL.cleanText("“본문입니다”"), "본문입니다");
+});
+
+test("sourceOf", () => {
+  assert.equal(DL.sourceOf("chatgpt.com"), "gpt");
+  assert.equal(DL.sourceOf("claude.ai"), "claude");
+});
+
 test("store: 지원서→문항→버전, 중복 버전은 건너뛴다", () => {
   const db = emptyDb();
   const { id: appId } = apply(db, "addApp", { company: "한결전자", role: "백엔드", deadline: "2026-10-01" });
