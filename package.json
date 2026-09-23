@@ -7,7 +7,8 @@
   "scripts": {
     "test": "node --test tests/unit.test.mjs",
     "test:e2e": "node tests/e2e/run.mjs",
-    "pack": "bash scripts/pack.sh"
+    "pack": "bash scripts/pack.sh",
+    "icons": "node scripts/icons.mjs"
   },
   "devDependencies": {
     "playwright": "^1.63.0"
