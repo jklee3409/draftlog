@@ -14,6 +14,7 @@ const shots = process.env.E2E_SCREENSHOTS === "1";
 
 const ctx = await chromium.launchPersistentContext(path.join(here, `.profile-${Date.now()}`), {
   channel: "chromium",
+  executablePath: process.env.CHROMIUM_PATH || undefined,
   headless: true,
   viewport: { width: 1280, height: 860 },
   args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],

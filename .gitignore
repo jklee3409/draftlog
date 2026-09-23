@@ -4,3 +4,4 @@ dist/
 *.log
 tests/e2e/.profile*/
 tests/e2e/*.png
+.dev-profile/
